@@ -76,6 +76,11 @@ jobs:
           echo "Waiting for PostgreSQL to be ready..."
           timeout 60 bash -c 'until docker compose exec -T postgres pg_isready -U postgres; do sleep 2; done'
 
+      - name: Wait for Kafka to be healthy
+        run: |
+          echo "Waiting for Kafka to be ready..."
+          timeout 90 bash -c 'until docker compose exec -T kafka kafka-topics --bootstrap-server localhost:9092 --list; do sleep 3; done'
+
       - name: Run E2E tests
         env:
           WALLET_DB_HOST: localhost
@@ -88,6 +93,7 @@ jobs:
           TRANSACTION_DB_USER: transaction_user
           TRANSACTION_DB_PASSWORD: transaction_pass
           TRANSACTION_DB_NAME: transaction_db
+          KAFKA_BROKER: localhost:9092
         run: npm run test:e2e
 
       - name: Stop Docker Compose
