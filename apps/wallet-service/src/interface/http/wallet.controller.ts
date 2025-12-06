@@ -8,8 +8,8 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { WalletService } from '../../application/services/wallet.service.js';
-import type { WalletResponseDto } from '../../application/dtos/create-wallet.dto.js';
 import { CreateWalletDto } from '../../application/dtos/create-wallet.dto.js';
+import type { WalletResponseDto } from '../../application/dtos/wallet-response.dto.js';
 import { GetWalletParams } from '../../application/dtos/get-wallet.dto.js';
 
 @Controller('wallets')

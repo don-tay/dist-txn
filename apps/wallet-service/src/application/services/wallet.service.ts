@@ -11,7 +11,7 @@ import {
   WALLET_REPOSITORY,
   type WalletRepository,
 } from '../../domain/repositories/wallet.repository.js';
-import { WalletResponseDto } from '../dtos/create-wallet.dto.js';
+import { WalletResponseDto } from '../dtos/wallet-response.dto.js';
 
 @Injectable()
 export class WalletService {
@@ -27,17 +27,13 @@ export class WalletService {
     }
 
     const now = new Date();
-    const wallet = plainToInstance(
-      Wallet,
-      {
-        walletId: uuidv7(),
-        userId,
-        balance: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      { excludeExtraneousValues: true },
-    );
+    const wallet = Wallet.create({
+      walletId: uuidv7(),
+      userId,
+      balance: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
 
     const saved = await this.walletRepository.save(wallet);
     return this.toResponseDto(saved, false);
