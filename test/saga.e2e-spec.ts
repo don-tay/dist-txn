@@ -47,10 +47,10 @@ describe('Transfer Saga (e2e)', () => {
       // If terminal status reached but not expected, fail fast
       if (['COMPLETED', 'FAILED'].includes(response.body.status)) {
         if (response.body.status !== expectedStatus) {
-        throw new Error(
-          `Saga reached terminal status ${String(response.body.status)} (expected: ${expectedStatus}). ` +
-            `Failure reason: ${String(response.body.failureReason) || 'none'}`,
-        );
+          throw new Error(
+            `Saga reached terminal status ${String(response.body.status)} (expected: ${expectedStatus}). ` +
+              `Failure reason: ${String(response.body.failureReason) || 'none'}`,
+          );
         }
         return;
       }
