@@ -24,6 +24,7 @@
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
     "test:cov": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
     "test:e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./test/jest-e2e.json",
+    "test:e2e:saga": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./test/jest-e2e.json test/saga.e2e-spec.ts",
     "test:e2e:transaction-service": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./apps/transaction-service/test/jest-e2e.json",
     "test:e2e:wallet-service": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./apps/wallet-service/test/jest-e2e.json",
     "docker:up": "docker compose up -d",

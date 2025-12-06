@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { plainToInstance } from 'class-transformer';
-import { Transfer } from '../../domain/entities/transfer.entity';
+import {
+  Transfer,
+  TransferStatus,
+} from '../../domain/entities/transfer.entity';
 import type { TransferRepository } from '../../domain/repositories/transfer.repository';
 import { TransferOrmEntity } from './transfer.orm-entity';
 
@@ -28,5 +31,25 @@ export class TransferRepositoryImpl implements TransferRepository {
     return entity
       ? plainToInstance(Transfer, entity, { excludeExtraneousValues: true })
       : null;
+  }
+
+  async updateStatus(
+    transferId: string,
+    status: TransferStatus,
+    failureReason?: string | null,
+  ): Promise<Transfer | null> {
+    const entity = await this.ormRepository.findOne({
+      where: { transferId },
+    });
+    if (!entity) {
+      return null;
+    }
+
+    entity.status = status;
+    entity.failureReason = failureReason ?? null;
+    entity.updatedAt = new Date();
+
+    const saved = await this.ormRepository.save(entity);
+    return plainToInstance(Transfer, saved, { excludeExtraneousValues: true });
   }
 }

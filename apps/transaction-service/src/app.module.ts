@@ -8,6 +8,8 @@ import { TransferService } from './application/services/transfer.service';
 import { TransferOrmEntity } from './infrastructure/persistence/transfer.orm-entity';
 import { TransferRepositoryImpl } from './infrastructure/persistence/transfer.repository.impl';
 import { TRANSFER_REPOSITORY } from './domain/repositories/transfer.repository';
+import { KafkaProducer } from './infrastructure/messaging/kafka.producer';
+import { KafkaConsumer } from './infrastructure/messaging/kafka.consumer';
 
 @Module({
   imports: [
@@ -51,6 +53,8 @@ import { TRANSFER_REPOSITORY } from './domain/repositories/transfer.repository';
       provide: TRANSFER_REPOSITORY,
       useClass: TransferRepositoryImpl,
     },
+    KafkaProducer,
+    KafkaConsumer,
   ],
 })
 export class AppModule {}

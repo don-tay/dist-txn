@@ -16,5 +16,5 @@
     "^(\\.{1,2}/.*)\\.js$": "$1",
     "^@app/common(|/.*)$": "<rootDir>/libs/common/src/$1"
   },
-  "roots": ["<rootDir>/apps/"]
+  "roots": ["<rootDir>/apps/", "<rootDir>/test/"]
 }
