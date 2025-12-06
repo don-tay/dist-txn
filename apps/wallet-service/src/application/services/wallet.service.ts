@@ -11,7 +11,10 @@ import {
   WALLET_REPOSITORY,
   type WalletRepository,
 } from '../../domain/repositories/wallet.repository';
-import { WalletResponseDto } from '../dtos/wallet-response.dto';
+import {
+  WalletResponseDto,
+  CreateWalletResponseDto,
+} from '../dtos/wallet-response.dto';
 
 @Injectable()
 export class WalletService {
@@ -20,7 +23,7 @@ export class WalletService {
     private readonly walletRepository: WalletRepository,
   ) {}
 
-  async createWallet(userId: string): Promise<WalletResponseDto> {
+  async createWallet(userId: string): Promise<CreateWalletResponseDto> {
     const exists = await this.walletRepository.existsByUserId(userId);
     if (exists) {
       throw new ConflictException('Wallet already exists for this user');
@@ -36,7 +39,9 @@ export class WalletService {
     });
 
     const saved = await this.walletRepository.save(wallet);
-    return this.toResponseDto(saved, false);
+    return plainToInstance(CreateWalletResponseDto, saved, {
+      excludeExtraneousValues: true,
+    });
   }
 
   async getWallet(walletId: string): Promise<WalletResponseDto> {
@@ -45,22 +50,7 @@ export class WalletService {
       throw new NotFoundException('Wallet not found');
     }
 
-    return this.toResponseDto(wallet, true);
-  }
-
-  private toResponseDto(
-    wallet: Wallet,
-    includeUpdatedAt: boolean,
-  ): WalletResponseDto {
-    const plain = {
-      wallet_id: wallet.walletId,
-      user_id: wallet.userId,
-      balance: wallet.balance,
-      created_at: wallet.createdAt.toISOString(),
-      ...(includeUpdatedAt && { updated_at: wallet.updatedAt.toISOString() }),
-    };
-
-    return plainToInstance(WalletResponseDto, plain, {
+    return plainToInstance(WalletResponseDto, wallet, {
       excludeExtraneousValues: true,
     });
   }
