@@ -2,12 +2,14 @@ import type { INestApplication } from '@nestjs/common';
 import { ValidationPipe } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
+import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { v7 as uuidv7 } from 'uuid';
 
 describe('WalletService (e2e)', () => {
   let app: INestApplication;
+  let dataSource: DataSource;
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -23,6 +25,10 @@ describe('WalletService (e2e)', () => {
       }),
     );
     await app.init();
+
+    dataSource = app.get(DataSource);
+    // Ensure tables exist and are clean for each test
+    await dataSource.synchronize(true);
   });
 
   afterEach(async () => {

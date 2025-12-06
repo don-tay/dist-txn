@@ -1,4 +1,4 @@
-import { Expose, Transform } from 'class-transformer';
+import { Expose } from 'class-transformer';
 
 /**
  * Response DTO for wallet operations (create and get).
@@ -12,7 +12,6 @@ export class WalletResponseDto {
   user_id!: string;
 
   @Expose()
-  @Transform(({ value }) => Number(value))
   balance!: number;
 
   @Expose()

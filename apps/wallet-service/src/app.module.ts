@@ -29,7 +29,7 @@ import { WALLET_REPOSITORY } from './domain/repositories/wallet.repository';
         ),
         database: configService.get<string>('WALLET_DB_NAME', 'wallet_db'),
         entities: [WalletOrmEntity],
-        synchronize: true, // Dev only - use migrations in production
+        synchronize: configService.get<boolean>('WALLET_DB_SYNCHRONIZE', false),
       }),
     }),
     TypeOrmModule.forFeature([WalletOrmEntity]),
