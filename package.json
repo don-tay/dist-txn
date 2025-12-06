@@ -1,0 +1,104 @@
+{
+  "name": "dist-txn",
+  "version": "0.0.1",
+  "description": "Distributed Transaction System using Saga Pattern",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "nest build",
+    "build:all": "npm run build:transaction-service && npm run build:wallet-service",
+    "build:transaction-service": "nest build transaction-service",
+    "build:wallet-service": "nest build wallet-service",
+    "format": "prettier --write \"apps/**/*.ts\" \"libs/**/*.ts\"",
+    "format:check": "prettier --check \"apps/**/*.ts\" \"libs/**/*.ts\"",
+    "start:transaction-service": "nest start transaction-service",
+    "start:wallet-service": "nest start wallet-service",
+    "start:transaction-service:dev": "nest start transaction-service --watch",
+    "start:wallet-service:dev": "nest start wallet-service --watch",
+    "start:transaction-service:debug": "nest start transaction-service --debug --watch",
+    "start:wallet-service:debug": "nest start wallet-service --debug --watch",
+    "lint": "eslint \"apps/**/*.ts\" \"libs/**/*.ts\" --fix",
+    "lint:check": "eslint \"apps/**/*.ts\" \"libs/**/*.ts\"",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "test:cov": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
+    "test:e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./test/jest-e2e.json",
+    "test:e2e:transaction-service": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./apps/transaction-service/test/jest-e2e.json",
+    "test:e2e:wallet-service": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./apps/wallet-service/test/jest-e2e.json",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.9",
+    "@nestjs/config": "^4.0.2",
+    "@nestjs/core": "^11.1.9",
+    "@nestjs/microservices": "^11.1.9",
+    "@nestjs/platform-express": "^11.1.9",
+    "@nestjs/terminus": "^11.0.0",
+    "@nestjs/typeorm": "^11.0.0",
+    "kafkajs": "^2.2.4",
+    "pg": "^8.16.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "typeorm": "^0.3.24",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.30.1",
+    "@nestjs/cli": "^11.0.14",
+    "@nestjs/schematics": "^11.0.9",
+    "@nestjs/testing": "^11.1.9",
+    "@types/express": "^5.0.6",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^24.0.4",
+    "@types/supertest": "^6.0.3",
+    "@types/uuid": "^10.0.0",
+    "eslint": "^9.30.1",
+    "eslint-config-prettier": "^10.1.8",
+    "jest": "^29.7.0",
+    "prettier": "^3.5.3",
+    "source-map-support": "^0.5.21",
+    "supertest": "^7.1.1",
+    "ts-jest": "^29.4.0",
+    "ts-loader": "^9.5.2",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.35.1"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": ".",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.ts$": [
+        "ts-jest",
+        {
+          "useESM": true
+        }
+      ]
+    },
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
+    "coverageDirectory": "./coverage",
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/apps/",
+      "<rootDir>/libs/"
+    ],
+    "moduleNameMapper": {
+      "^(\\.{1,2}/.*)\\.js$": "$1",
+      "^@app/common(|/.*)$": "<rootDir>/libs/common/src/$1"
+    },
+    "extensionsToTreatAsEsm": [
+      ".ts"
+    ]
+  }
+}
