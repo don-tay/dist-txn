@@ -68,8 +68,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Start PostgreSQL via Docker Compose
-        run: docker compose up -d postgres
+      - name: Start PostgreSQL and Kafka via Docker Compose
+        run: docker compose up -d postgres kafka zookeeper
 
       - name: Wait for PostgreSQL to be healthy
         run: |
