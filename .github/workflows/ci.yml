@@ -79,7 +79,8 @@ jobs:
       - name: Wait for Kafka to be healthy
         run: |
           echo "Waiting for Kafka to be ready..."
-          timeout 90 bash -c 'until docker compose exec -T kafka kafka-topics --bootstrap-server localhost:9092 --list; do sleep 3; done'
+          timeout 90 bash -c 'until docker compose exec -T kafka kafka-broker-api-versions --bootstrap-server kafka:29092 > /dev/null 2>&1; do echo "Kafka not ready, retrying..."; sleep 3; done'
+          echo "Kafka is ready!"
 
       - name: Run E2E tests
         env:
