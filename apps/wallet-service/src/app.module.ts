@@ -2,12 +2,12 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TerminusModule } from '@nestjs/terminus';
-import { HealthController } from './interface/http/health.controller.js';
-import { WalletController } from './interface/http/wallet.controller.js';
-import { WalletService } from './application/services/wallet.service.js';
-import { WalletOrmEntity } from './infrastructure/persistence/wallet.orm-entity.js';
-import { WalletRepositoryImpl } from './infrastructure/persistence/wallet.repository.impl.js';
-import { WALLET_REPOSITORY } from './domain/repositories/wallet.repository.js';
+import { HealthController } from './interface/http/health.controller';
+import { WalletController } from './interface/http/wallet.controller';
+import { WalletService } from './application/services/wallet.service';
+import { WalletOrmEntity } from './infrastructure/persistence/wallet.orm-entity';
+import { WalletRepositoryImpl } from './infrastructure/persistence/wallet.repository.impl';
+import { WALLET_REPOSITORY } from './domain/repositories/wallet.repository';
 
 @Module({
   imports: [

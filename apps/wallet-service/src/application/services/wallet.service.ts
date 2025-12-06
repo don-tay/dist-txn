@@ -6,12 +6,12 @@ import {
 } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { v7 as uuidv7 } from 'uuid';
-import { Wallet } from '../../domain/entities/wallet.entity.js';
+import { Wallet } from '../../domain/entities/wallet.entity';
 import {
   WALLET_REPOSITORY,
   type WalletRepository,
-} from '../../domain/repositories/wallet.repository.js';
-import { WalletResponseDto } from '../dtos/wallet-response.dto.js';
+} from '../../domain/repositories/wallet.repository';
+import { WalletResponseDto } from '../dtos/wallet-response.dto';
 
 @Injectable()
 export class WalletService {

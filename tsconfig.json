@@ -1,9 +1,9 @@
 {
   "compilerOptions": {
-    // Module System - ESM
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "target": "es2024",
+    // Module System - ESM with bundler resolution (no .js extensions needed)
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "target": "ES2022",
 
     // Output
     "outDir": "./dist",
@@ -16,7 +16,7 @@
     // Path Resolution
     "baseUrl": "./",
     "paths": {
-      "@app/common": ["libs/common/src/index.js"],
+      "@app/common": ["libs/common/src"],
       "@app/common/*": ["libs/common/src/*"]
     },
 

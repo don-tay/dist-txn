@@ -2,9 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { plainToInstance } from 'class-transformer';
-import { Wallet } from '../../domain/entities/wallet.entity.js';
-import type { WalletRepository } from '../../domain/repositories/wallet.repository.js';
-import { WalletOrmEntity } from './wallet.orm-entity.js';
+import { Wallet } from '../../domain/entities/wallet.entity';
+import type { WalletRepository } from '../../domain/repositories/wallet.repository';
+import { WalletOrmEntity } from './wallet.orm-entity';
 
 @Injectable()
 export class WalletRepositoryImpl implements WalletRepository {

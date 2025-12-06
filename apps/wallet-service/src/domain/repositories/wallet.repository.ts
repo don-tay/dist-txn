@@ -1,4 +1,4 @@
-import type { Wallet } from '../entities/wallet.entity.js';
+import type { Wallet } from '../entities/wallet.entity';
 
 export const WALLET_REPOSITORY = Symbol('WALLET_REPOSITORY');
 

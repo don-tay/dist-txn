@@ -7,10 +7,10 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { WalletService } from '../../application/services/wallet.service.js';
-import { CreateWalletDto } from '../../application/dtos/create-wallet.dto.js';
-import type { WalletResponseDto } from '../../application/dtos/wallet-response.dto.js';
-import { GetWalletParams } from '../../application/dtos/get-wallet.dto.js';
+import { WalletService } from '../../application/services/wallet.service';
+import { CreateWalletDto } from '../../application/dtos/create-wallet.dto';
+import type { WalletResponseDto } from '../../application/dtos/wallet-response.dto';
+import { GetWalletParams } from '../../application/dtos/get-wallet.dto';
 
 @Controller('wallets')
 export class WalletController {

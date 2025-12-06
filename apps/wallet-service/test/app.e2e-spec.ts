@@ -3,7 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { AppModule } from '../src/app.module.js';
+import { AppModule } from '../src/app.module';
 import { v7 as uuidv7 } from 'uuid';
 
 describe('WalletService (e2e)', () => {

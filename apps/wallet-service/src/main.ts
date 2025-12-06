@@ -2,7 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { AppModule } from './app.module.js';
+import { AppModule } from './app.module';
 
 const logger = new Logger('WalletService');
 
