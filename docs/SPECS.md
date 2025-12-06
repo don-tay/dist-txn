@@ -75,6 +75,122 @@ Infrastructure (implements Domain interfaces)
 | Repository | Interface in domain, implementation in infrastructure |
 | Domain Service | Business logic spanning multiple aggregates |
 
+### Coding Conventions
+
+#### Input Validation
+
+Use NestJS `ValidationPipe` with `class-validator` decorators for all controller input validation:
+
+```typescript
+// main.ts - Enable globally
+app.useGlobalPipes(
+  new ValidationPipe({
+    whitelist: true,           // Strip non-decorated properties
+    forbidNonWhitelisted: true, // Error on extra properties
+    transform: true,            // Auto-transform to DTO instances
+  }),
+);
+
+// DTO with validation decorators
+export class CreateWalletDto {
+  @IsUUID()
+  user_id!: string;
+}
+```
+
+#### Object Transformation
+
+Use `class-transformer` with `@Expose()` decorators for all entity/DTO transformations:
+
+```typescript
+// Entity with @Expose() decorators
+export class Wallet {
+  @Expose() readonly walletId: string;
+  @Expose() readonly userId: string;
+  @Expose() readonly balance: number;
+  // ...
+}
+
+// Repository: Use plainToInstance for both directions
+async save(wallet: Wallet): Promise<Wallet> {
+  const ormEntity = plainToInstance(WalletOrmEntity, wallet, {
+    excludeExtraneousValues: true,
+  });
+  const saved = await this.ormRepository.save(ormEntity);
+  return plainToInstance(Wallet, saved, { excludeExtraneousValues: true });
+}
+
+async findById(walletId: string): Promise<Wallet | null> {
+  const entity = await this.ormRepository.findOne({ where: { walletId } });
+  return entity
+    ? plainToInstance(Wallet, entity, { excludeExtraneousValues: true })
+    : null;
+}
+```
+
+Key options:
+- `excludeExtraneousValues: true` - Only include properties with `@Expose()`
+
+#### Type Safety
+
+TypeScript uses structural typing - leverage it instead of excessive type guards:
+
+- Trust typed function parameters and return types
+- Use `plainToInstance` with decorated classes for transformations
+- Use `satisfies` for object literal type checking without widening
+
+```typescript
+// ✅ Good: satisfies for config objects
+const config = {
+  host: 'localhost',
+  port: 5432,
+} satisfies DbConfig;
+
+// ✅ Good: Use plainToInstance consistently
+const wallet = plainToInstance(Wallet, {
+  walletId: randomUUID(),
+  userId,
+  balance: 0,
+  createdAt: now,
+  updatedAt: now,
+}, { excludeExtraneousValues: true });
+```
+
+#### Immutability
+
+Prefer immutability and avoid mutation/side effects:
+
+- **Domain entities**: Use `readonly` for identity fields, private constructor with factory methods
+- **Props interfaces**: Mark all properties as `readonly`
+- **Object creation**: Use spread/`Object.assign` instead of sequential mutation
+
+```typescript
+// ❌ Avoid: Sequential mutation
+const plain: Record<string, unknown> = { wallet_id: wallet.walletId };
+plain['user_id'] = wallet.userId;
+if (includeUpdatedAt) {
+  plain['updated_at'] = wallet.updatedAt;
+}
+
+// ✅ Prefer: Spread with conditional
+const plain = {
+  wallet_id: wallet.walletId,
+  user_id: wallet.userId,
+  ...(includeUpdatedAt && { updated_at: wallet.updatedAt }),
+};
+
+// ❌ Avoid: Field-by-field assignment
+const entity = new WalletOrmEntity();
+entity.walletId = wallet.walletId;
+entity.userId = wallet.userId;
+
+// ✅ Prefer: Object.assign in single expression
+return Object.assign(new WalletOrmEntity(), {
+  walletId: wallet.walletId,
+  userId: wallet.userId,
+});
+```
+
 ---
 
 ## 1. Functional Requirements
@@ -128,24 +244,27 @@ Infrastructure (implements Domain interfaces)
 
 #### Wallet
 
-| Field      | Type          | Description               |
-| ---------- | ------------- | ------------------------- |
-| wallet_id  | UUID          | Primary key               |
-| user_id    | UUID          | Owner (unique constraint) |
-| balance    | DECIMAL(19,4) | Non-negative constraint   |
-| created_at | TIMESTAMP     | Creation time             |
-| updated_at | TIMESTAMP     | Last update               |
+| Field      | Type      | Description                          |
+| ---------- | --------- | ------------------------------------ |
+| wallet_id  | UUID      | Primary key                          |
+| user_id    | UUID      | Owner (unique constraint)            |
+| balance    | BIGINT    | Balance in cents, non-negative       |
+| created_at | TIMESTAMP | Creation time                        |
+| updated_at | TIMESTAMP | Last update                          |
+
+> **Note:** All monetary amounts are stored in cents (integer) to avoid floating-point precision issues.
+> PostgreSQL `bigint` returns as string; use TypeORM column transformer for automatic conversion.
 
 #### WalletLedgerEntry (idempotency + audit)
 
-| Field          | Type          | Description                        |
-| -------------- | ------------- | ---------------------------------- |
-| entry_id       | UUID          | Primary key                        |
-| wallet_id      | UUID          | FK to Wallet                       |
-| transaction_id | UUID          | Correlation ID (unique per wallet) |
-| type           | ENUM          | DEBIT, CREDIT, REFUND              |
-| amount         | DECIMAL(19,4) | Operation amount                   |
-| created_at     | TIMESTAMP     | Entry time                         |
+| Field          | Type      | Description                        |
+| -------------- | --------- | ---------------------------------- |
+| entry_id       | UUID      | Primary key                        |
+| wallet_id      | UUID      | FK to Wallet                       |
+| transaction_id | UUID      | Correlation ID (unique per wallet) |
+| type           | ENUM      | DEBIT, CREDIT, REFUND              |
+| amount         | BIGINT    | Amount in cents                    |
+| created_at     | TIMESTAMP | Entry time                         |
 
 **Constraints:**
 
@@ -156,16 +275,16 @@ Infrastructure (implements Domain interfaces)
 
 #### Transfer
 
-| Field              | Type          | Description                         |
-| ------------------ | ------------- | ----------------------------------- |
-| transfer_id        | UUID          | PK (saga correlation ID)            |
-| sender_wallet_id   | UUID          | Source wallet                       |
-| receiver_wallet_id | UUID          | Destination wallet                  |
-| amount             | DECIMAL(19,4) | Transfer amount                     |
-| status             | ENUM          | PENDING, DEBITED, COMPLETED, FAILED |
-| failure_reason     | VARCHAR       | Nullable                            |
-| created_at         | TIMESTAMP     | Creation time                       |
-| updated_at         | TIMESTAMP     | Last state change                   |
+| Field              | Type      | Description                         |
+| ------------------ | --------- | ----------------------------------- |
+| transfer_id        | UUID      | PK (saga correlation ID)            |
+| sender_wallet_id   | UUID      | Source wallet                       |
+| receiver_wallet_id | UUID      | Destination wallet                  |
+| amount             | BIGINT    | Transfer amount in cents            |
+| status             | ENUM      | PENDING, DEBITED, COMPLETED, FAILED |
+| failure_reason     | VARCHAR   | Nullable                            |
+| created_at         | TIMESTAMP | Creation time                       |
+| updated_at         | TIMESTAMP | Last state change                   |
 
 ---
 
@@ -194,7 +313,7 @@ Infrastructure (implements Domain interfaces)
 {
   "wallet_id": "uuid",
   "user_id": "uuid",
-  "balance": "0.0000",
+  "balance": 0,
   "created_at": "timestamp"
 }
 ```
@@ -207,7 +326,7 @@ Infrastructure (implements Domain interfaces)
 {
   "wallet_id": "uuid",
   "user_id": "uuid",
-  "balance": "100.0000",
+  "balance": 10000,
   "created_at": "timestamp",
   "updated_at": "timestamp"
 }
@@ -228,7 +347,7 @@ Infrastructure (implements Domain interfaces)
 {
   "sender_wallet_id": "uuid",
   "receiver_wallet_id": "uuid",
-  "amount": "50.00"
+  "amount": 5000
 }
 ```
 
@@ -251,7 +370,7 @@ Infrastructure (implements Domain interfaces)
   "transfer_id": "uuid",
   "sender_wallet_id": "uuid",
   "receiver_wallet_id": "uuid",
-  "amount": "50.0000",
+  "amount": 5000,
   "status": "COMPLETED",
   "failure_reason": null,
   "created_at": "timestamp",

@@ -5,7 +5,8 @@
   "monorepo": true,
   "root": "apps/transaction-service",
   "compilerOptions": {
-    "webpack": false,
+    "builder": "swc",
+    "typeCheck": true,
     "tsConfigPath": "apps/transaction-service/tsconfig.app.json",
     "assets": [],
     "watchAssets": false,

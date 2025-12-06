@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Check linting
+        run: npm run lint:check
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build all services
+        run: npm run build:all
+
+  test-e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start PostgreSQL via Docker Compose
+        run: docker compose up -d postgres
+
+      - name: Wait for PostgreSQL to be healthy
+        run: |
+          echo "Waiting for PostgreSQL to be ready..."
+          timeout 60 bash -c 'until docker compose exec -T postgres pg_isready -U postgres; do sleep 2; done'
+
+      - name: Run E2E tests
+        env:
+          WALLET_DB_HOST: localhost
+          WALLET_DB_PORT: 5432
+          WALLET_DB_USER: wallet_user
+          WALLET_DB_PASSWORD: wallet_pass
+          WALLET_DB_NAME: wallet_db
+          TRANSACTION_DB_HOST: localhost
+          TRANSACTION_DB_PORT: 5432
+          TRANSACTION_DB_USER: transaction_user
+          TRANSACTION_DB_PASSWORD: transaction_pass
+          TRANSACTION_DB_NAME: transaction_db
+        run: npm run test:e2e
+
+      - name: Stop Docker Compose
+        if: always()
+        run: docker compose down -v
