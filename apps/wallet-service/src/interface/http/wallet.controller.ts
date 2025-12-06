@@ -9,7 +9,10 @@ import {
 } from '@nestjs/common';
 import { WalletService } from '../../application/services/wallet.service';
 import { CreateWalletDto } from '../../application/dtos/create-wallet.dto';
-import type { WalletResponseDto } from '../../application/dtos/wallet-response.dto';
+import type {
+  WalletResponseDto,
+  CreateWalletResponseDto,
+} from '../../application/dtos/wallet-response.dto';
 import { GetWalletParams } from '../../application/dtos/get-wallet.dto';
 
 @Controller('wallets')
@@ -18,8 +21,10 @@ export class WalletController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async createWallet(@Body() dto: CreateWalletDto): Promise<WalletResponseDto> {
-    return this.walletService.createWallet(dto.user_id);
+  async createWallet(
+    @Body() dto: CreateWalletDto,
+  ): Promise<CreateWalletResponseDto> {
+    return this.walletService.createWallet(dto.userId);
   }
 
   @Get(':walletId')

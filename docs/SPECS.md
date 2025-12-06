@@ -13,7 +13,7 @@ A wallet-transaction system demonstrating the Saga pattern with choreography.
 - **Service isolation**: Each service owns its database (no shared DB)
 - **Async communication**: Services communicate via events, not direct calls
 - **Choreography**: No central orchestrator; each service reacts to events
-- **Idempotency**: All operations are idempotent via transaction_id
+- **Idempotency**: All operations are idempotent via transactionId
 
 ### Technology Decisions
 
@@ -94,7 +94,7 @@ app.useGlobalPipes(
 // DTO with validation decorators
 export class CreateWalletDto {
   @IsUUID()
-  user_id!: string;
+  userId!: string;
 }
 ```
 
@@ -166,17 +166,17 @@ Prefer immutability and avoid mutation/side effects:
 
 ```typescript
 // ❌ Avoid: Sequential mutation
-const plain: Record<string, unknown> = { wallet_id: wallet.walletId };
-plain['user_id'] = wallet.userId;
+const response: Record<string, unknown> = { walletId: wallet.walletId };
+response['userId'] = wallet.userId;
 if (includeUpdatedAt) {
-  plain['updated_at'] = wallet.updatedAt;
+  response['updatedAt'] = wallet.updatedAt;
 }
 
 // ✅ Prefer: Spread with conditional
-const plain = {
-  wallet_id: wallet.walletId,
-  user_id: wallet.userId,
-  ...(includeUpdatedAt && { updated_at: wallet.updatedAt }),
+const response = {
+  walletId: wallet.walletId,
+  userId: wallet.userId,
+  ...(includeUpdatedAt && { updatedAt: wallet.updatedAt }),
 };
 
 // ❌ Avoid: Field-by-field assignment
@@ -295,7 +295,7 @@ return Object.assign(new WalletOrmEntity(), {
 | Method | Endpoint               | Description          |
 | ------ | ---------------------- | -------------------- |
 | POST   | `/wallets`             | Create wallet        |
-| GET    | `/wallets/{wallet_id}` | Get wallet + balance |
+| GET    | `/wallets/{walletId}`  | Get wallet + balance |
 
 #### POST /wallets
 
@@ -303,7 +303,7 @@ return Object.assign(new WalletOrmEntity(), {
 
 ```json
 {
-  "user_id": "uuid"
+  "userId": "uuid"
 }
 ```
 
@@ -311,24 +311,24 @@ return Object.assign(new WalletOrmEntity(), {
 
 ```json
 {
-  "wallet_id": "uuid",
-  "user_id": "uuid",
+  "walletId": "uuid",
+  "userId": "uuid",
   "balance": 0,
-  "created_at": "timestamp"
+  "createdAt": "timestamp"
 }
 ```
 
-#### GET /wallets/{wallet_id}
+#### GET /wallets/{walletId}
 
 **Response (200 OK):**
 
 ```json
 {
-  "wallet_id": "uuid",
-  "user_id": "uuid",
+  "walletId": "uuid",
+  "userId": "uuid",
   "balance": 10000,
-  "created_at": "timestamp",
-  "updated_at": "timestamp"
+  "createdAt": "timestamp",
+  "updatedAt": "timestamp"
 }
 ```
 
@@ -337,7 +337,7 @@ return Object.assign(new WalletOrmEntity(), {
 | Method | Endpoint                   | Description       |
 | ------ | -------------------------- | ----------------- |
 | POST   | `/transfers`               | Initiate transfer |
-| GET    | `/transfers/{transfer_id}` | Query status      |
+| GET    | `/transfers/{transferId}`  | Query status      |
 
 #### POST /transfers
 
@@ -345,8 +345,8 @@ return Object.assign(new WalletOrmEntity(), {
 
 ```json
 {
-  "sender_wallet_id": "uuid",
-  "receiver_wallet_id": "uuid",
+  "senderWalletId": "uuid",
+  "receiverWalletId": "uuid",
   "amount": 5000
 }
 ```
@@ -355,41 +355,44 @@ return Object.assign(new WalletOrmEntity(), {
 
 ```json
 {
-  "transfer_id": "uuid",
+  "transferId": "uuid",
+  "senderWalletId": "uuid",
+  "receiverWalletId": "uuid",
+  "amount": 5000,
   "status": "PENDING",
-  "created_at": "timestamp"
+  "createdAt": "timestamp"
 }
 ```
 
-#### GET /transfers/{transfer_id}
+#### GET /transfers/{transferId}
 
 **Response (200 OK):**
 
 ```json
 {
-  "transfer_id": "uuid",
-  "sender_wallet_id": "uuid",
-  "receiver_wallet_id": "uuid",
+  "transferId": "uuid",
+  "senderWalletId": "uuid",
+  "receiverWalletId": "uuid",
   "amount": 5000,
   "status": "COMPLETED",
-  "failure_reason": null,
-  "created_at": "timestamp",
-  "updated_at": "timestamp"
+  "failureReason": null,
+  "createdAt": "timestamp",
+  "updatedAt": "timestamp"
 }
 ```
 
 ### Event Topics (Kafka)
 
-| Topic                  | Publisher       | Consumers                   | Payload                                                   |
-| ---------------------- | --------------- | --------------------------- | --------------------------------------------------------- |
-| `transfer.initiated`   | Transaction Svc | Wallet Svc                  | transfer_id, sender_wallet_id, receiver_wallet_id, amount |
-| `wallet.debited`       | Wallet Svc      | Wallet Svc, Transaction Svc | transfer_id, wallet_id                                    |
-| `wallet.debit-failed`  | Wallet Svc      | Transaction Svc             | transfer_id, wallet_id, reason                            |
-| `wallet.credited`      | Wallet Svc      | Transaction Svc             | transfer_id, wallet_id                                    |
-| `wallet.credit-failed` | Wallet Svc      | Wallet Svc                  | transfer_id, wallet_id, reason                            |
-| `wallet.refunded`      | Wallet Svc      | Transaction Svc             | transfer_id, wallet_id                                    |
-| `transfer.completed`   | Transaction Svc | (External)                  | transfer_id                                               |
-| `transfer.failed`      | Transaction Svc | (External)                  | transfer_id, reason                                       |
+| Topic                  | Publisher       | Consumers                   | Payload                                              |
+| ---------------------- | --------------- | --------------------------- | ---------------------------------------------------- |
+| `transfer.initiated`   | Transaction Svc | Wallet Svc                  | transferId, senderWalletId, receiverWalletId, amount |
+| `wallet.debited`       | Wallet Svc      | Wallet Svc, Transaction Svc | transferId, walletId                                 |
+| `wallet.debit-failed`  | Wallet Svc      | Transaction Svc             | transferId, walletId, reason                         |
+| `wallet.credited`      | Wallet Svc      | Transaction Svc             | transferId, walletId                                 |
+| `wallet.credit-failed` | Wallet Svc      | Wallet Svc                  | transferId, walletId, reason                         |
+| `wallet.refunded`      | Wallet Svc      | Transaction Svc             | transferId, walletId                                 |
+| `transfer.completed`   | Transaction Svc | (External)                  | transferId                                           |
+| `transfer.failed`      | Transaction Svc | (External)                  | transferId, reason                                   |
 
 ---
 

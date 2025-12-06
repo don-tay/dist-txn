@@ -1,22 +1,29 @@
-import { Expose } from 'class-transformer';
+import { Expose, Transform } from 'class-transformer';
 
 /**
- * Response DTO for wallet operations (create and get).
- * Uses snake_case for API response consistency.
+ * Response DTO for wallet creation (POST).
+ * Omits updatedAt as per spec.
  */
-export class WalletResponseDto {
+export class CreateWalletResponseDto {
   @Expose()
-  wallet_id!: string;
+  walletId!: string;
 
   @Expose()
-  user_id!: string;
+  userId!: string;
 
   @Expose()
   balance!: number;
 
   @Expose()
-  created_at!: string;
+  @Transform(({ value }: { value: Date }) => value.toISOString())
+  createdAt!: string;
+}
 
+/**
+ * Response DTO for wallet retrieval (GET).
+ */
+export class WalletResponseDto extends CreateWalletResponseDto {
   @Expose()
-  updated_at?: string;
+  @Transform(({ value }: { value: Date }) => value.toISOString())
+  updatedAt!: string;
 }
