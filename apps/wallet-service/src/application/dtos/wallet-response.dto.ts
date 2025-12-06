@@ -21,4 +21,3 @@ export class WalletResponseDto {
   @Expose()
   updated_at?: string;
 }
-
