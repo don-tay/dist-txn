@@ -4,16 +4,93 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
-import { AppModule } from '../src/app.module';
 import { v7 as uuidv7 } from 'uuid';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { TerminusModule } from '@nestjs/terminus';
+import { HealthController } from '../src/interface/http/health.controller';
+import { WalletController } from '../src/interface/http/wallet.controller';
+import { WalletService } from '../src/application/services/wallet.service';
+import { WalletOrmEntity } from '../src/infrastructure/persistence/wallet.orm-entity';
+import { WalletLedgerEntryOrmEntity } from '../src/infrastructure/persistence/wallet-ledger-entry.orm-entity';
+import { WalletRepositoryImpl } from '../src/infrastructure/persistence/wallet.repository.impl';
+import { WALLET_REPOSITORY } from '../src/domain/repositories/wallet.repository';
 
+/**
+ * Wallet Service E2E Tests (HTTP API only)
+ *
+ * These tests verify the HTTP API layer in isolation, without requiring Kafka infrastructure.
+ *
+ * WHY WE EXCLUDE KAFKA:
+ * ---------------------
+ * 1. **Isolation**: These tests focus solely on HTTP request/response behavior (validation,
+ *    status codes, response shapes). They don't test the async saga flow.
+ *
+ * 2. **Speed & Reliability**: Kafka connection during app initialization can take 5-30+ seconds
+ *    and may fail intermittently. Excluding it eliminates this external dependency.
+ *
+ * 3. **CI Simplicity**: HTTP-only tests can run with just PostgreSQL, without requiring
+ *    Kafka + Zookeeper infrastructure.
+ *
+ * 4. **Separation of Concerns**: Full Kafka integration is tested separately in
+ *    `test/saga.e2e-spec.ts` which spins up both services with real Kafka.
+ *
+ * 5. **No Producer Dependency**: Unlike TransactionService, WalletController doesn't call
+ *    KafkaProducerService directly - only KafkaEventHandler does (which handles incoming
+ *    Kafka events, not HTTP requests).
+ *
+ * WHAT'S TESTED HERE:
+ * - POST /wallets - Creates wallet with zero balance
+ * - GET /wallets/:id - Retrieves wallet by ID
+ * - GET /health - Health check endpoint
+ * - Input validation (UUIDs, required fields, extra properties)
+ * - Duplicate wallet rejection (409 Conflict)
+ *
+ * WHAT'S NOT TESTED HERE:
+ * - Wallet debit/credit operations (triggered via Kafka events)
+ * - Ledger entry creation
+ * - Saga state transitions
+ * - Cross-service communication
+ */
 describe('WalletService (e2e)', () => {
   let app: INestApplication;
   let dataSource: DataSource;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
+      imports: [
+        ConfigModule.forRoot({
+          isGlobal: true,
+          envFilePath: ['.env.local', '.env'],
+        }),
+        TypeOrmModule.forRootAsync({
+          imports: [ConfigModule],
+          inject: [ConfigService],
+          useFactory: (configService: ConfigService) => ({
+            type: 'postgres',
+            host: configService.get<string>('WALLET_DB_HOST', 'localhost'),
+            port: configService.get<number>('WALLET_DB_PORT', 5432),
+            username: configService.get<string>('WALLET_DB_USER', 'wallet_user'),
+            password: configService.get<string>(
+              'WALLET_DB_PASSWORD',
+              'wallet_pass',
+            ),
+            database: configService.get<string>('WALLET_DB_NAME', 'wallet_db'),
+            entities: [WalletOrmEntity, WalletLedgerEntryOrmEntity],
+            synchronize: true,
+          }),
+        }),
+        TypeOrmModule.forFeature([WalletOrmEntity, WalletLedgerEntryOrmEntity]),
+        TerminusModule,
+      ],
+      controllers: [HealthController, WalletController],
+      providers: [
+        WalletService,
+        {
+          provide: WALLET_REPOSITORY,
+          useClass: WalletRepositoryImpl,
+        },
+      ],
     }).compile();
 
     app = moduleFixture.createNestApplication();
@@ -27,12 +104,17 @@ describe('WalletService (e2e)', () => {
     await app.init();
 
     dataSource = app.get(DataSource);
-    // Ensure tables exist and are clean for each test
-    await dataSource.synchronize(true);
+  }, 30000);
+
+  afterAll(async () => {
+    await app.close();
   });
 
-  afterEach(async () => {
-    await app.close();
+  beforeEach(async () => {
+    // Clean tables before each test
+    await dataSource.query(
+      'TRUNCATE TABLE wallet_ledger_entries, wallets CASCADE',
+    );
   });
 
   describe('/health (GET)', () => {
