@@ -29,7 +29,8 @@
     "test:e2e:wallet-service": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./apps/wallet-service/test/jest-e2e.json",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f"
+    "docker:logs": "docker compose logs -f",
+    "prepare": "husky"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.9",
@@ -64,7 +65,9 @@
     "@types/uuid": "^11.0.0",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
     "jest": "^30.2.0",
+    "lint-staged": "^16.2.7",
     "prettier": "^3.7.4",
     "source-map-support": "^0.5.21",
     "supertest": "^7.1.4",
@@ -106,6 +109,20 @@
     },
     "extensionsToTreatAsEsm": [
       ".ts"
+    ]
+  },
+  "lint-staged": {
+    "apps/**/*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "libs/**/*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "test/**/*.ts": [
+      "eslint --fix",
+      "prettier --write"
     ]
   }
 }
