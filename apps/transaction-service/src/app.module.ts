@@ -8,6 +8,8 @@ import { TransferService } from './application/services/transfer.service';
 import { TransferOrmEntity } from './infrastructure/persistence/transfer.orm-entity';
 import { TransferRepositoryImpl } from './infrastructure/persistence/transfer.repository.impl';
 import { TRANSFER_REPOSITORY } from './domain/repositories/transfer.repository';
+import { KafkaModule } from './infrastructure/messaging/kafka.module';
+import { KafkaEventHandler } from './infrastructure/messaging/kafka.event-handler';
 
 @Module({
   imports: [
@@ -43,8 +45,9 @@ import { TRANSFER_REPOSITORY } from './domain/repositories/transfer.repository';
     }),
     TypeOrmModule.forFeature([TransferOrmEntity]),
     TerminusModule,
+    KafkaModule,
   ],
-  controllers: [HealthController, TransferController],
+  controllers: [HealthController, TransferController, KafkaEventHandler],
   providers: [
     TransferService,
     {

@@ -6,8 +6,11 @@ import { HealthController } from './interface/http/health.controller';
 import { WalletController } from './interface/http/wallet.controller';
 import { WalletService } from './application/services/wallet.service';
 import { WalletOrmEntity } from './infrastructure/persistence/wallet.orm-entity';
+import { WalletLedgerEntryOrmEntity } from './infrastructure/persistence/wallet-ledger-entry.orm-entity';
 import { WalletRepositoryImpl } from './infrastructure/persistence/wallet.repository.impl';
 import { WALLET_REPOSITORY } from './domain/repositories/wallet.repository';
+import { KafkaModule } from './infrastructure/messaging/kafka.module';
+import { KafkaEventHandler } from './infrastructure/messaging/kafka.event-handler';
 
 @Module({
   imports: [
@@ -28,14 +31,15 @@ import { WALLET_REPOSITORY } from './domain/repositories/wallet.repository';
           'wallet_pass',
         ),
         database: configService.get<string>('WALLET_DB_NAME', 'wallet_db'),
-        entities: [WalletOrmEntity],
+        entities: [WalletOrmEntity, WalletLedgerEntryOrmEntity],
         synchronize: configService.get<boolean>('WALLET_DB_SYNCHRONIZE', false),
       }),
     }),
-    TypeOrmModule.forFeature([WalletOrmEntity]),
+    TypeOrmModule.forFeature([WalletOrmEntity, WalletLedgerEntryOrmEntity]),
     TerminusModule,
+    KafkaModule,
   ],
-  controllers: [HealthController, WalletController],
+  controllers: [HealthController, WalletController, KafkaEventHandler],
   providers: [
     WalletService,
     {

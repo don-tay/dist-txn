@@ -1,16 +1,26 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { plainToInstance } from 'class-transformer';
+import { v7 as uuidv7 } from 'uuid';
+import { LedgerEntryType } from '@app/common';
 import { Wallet } from '../../domain/entities/wallet.entity';
-import type { WalletRepository } from '../../domain/repositories/wallet.repository';
+import { WalletLedgerEntry } from '../../domain/entities/wallet-ledger-entry.entity';
+import type {
+  WalletRepository,
+  DebitCreditResult,
+} from '../../domain/repositories/wallet.repository';
 import { WalletOrmEntity } from './wallet.orm-entity';
+import { WalletLedgerEntryOrmEntity } from './wallet-ledger-entry.orm-entity';
 
 @Injectable()
 export class WalletRepositoryImpl implements WalletRepository {
   constructor(
     @InjectRepository(WalletOrmEntity)
     private readonly ormRepository: Repository<WalletOrmEntity>,
+    @InjectRepository(WalletLedgerEntryOrmEntity)
+    private readonly ledgerRepository: Repository<WalletLedgerEntryOrmEntity>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async save(wallet: Wallet): Promise<Wallet> {
@@ -35,5 +45,91 @@ export class WalletRepositoryImpl implements WalletRepository {
       where: { userId },
     });
     return count > 0;
+  }
+
+  async updateBalanceWithLedger(
+    walletId: string,
+    transactionId: string,
+    amount: number,
+    type: LedgerEntryType,
+  ): Promise<DebitCreditResult> {
+    return this.dataSource.transaction(async (manager) => {
+      const walletRepo = manager.getRepository(WalletOrmEntity);
+      const ledgerRepo = manager.getRepository(WalletLedgerEntryOrmEntity);
+
+      // Check for existing ledger entry (idempotency)
+      const existingEntry = await ledgerRepo.findOne({
+        where: { walletId, transactionId },
+      });
+      if (existingEntry) {
+        const wallet = await walletRepo.findOne({ where: { walletId } });
+        return {
+          wallet: plainToInstance(Wallet, wallet, {
+            excludeExtraneousValues: true,
+          }),
+          ledgerEntry: plainToInstance(WalletLedgerEntry, existingEntry, {
+            excludeExtraneousValues: true,
+          }),
+        };
+      }
+
+      // Lock wallet row for update
+      const wallet = await walletRepo.findOne({
+        where: { walletId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!wallet) {
+        throw new Error(`Wallet not found: ${walletId}`);
+      }
+
+      // Calculate new balance
+      const balanceChange = type === LedgerEntryType.DEBIT ? -amount : amount;
+      const newBalance = wallet.balance + balanceChange;
+
+      if (newBalance < 0) {
+        throw new Error(
+          `Insufficient balance: current=${String(wallet.balance)}, required=${String(amount)}`,
+        );
+      }
+
+      // Update wallet balance
+      wallet.balance = newBalance;
+      wallet.updatedAt = new Date();
+      const savedWallet = await walletRepo.save(wallet);
+
+      // Create ledger entry
+      const ledgerEntry = ledgerRepo.create({
+        entryId: uuidv7(),
+        walletId,
+        transactionId,
+        type,
+        amount,
+        createdAt: new Date(),
+      });
+      const savedEntry = await ledgerRepo.save(ledgerEntry);
+
+      return {
+        wallet: plainToInstance(Wallet, savedWallet, {
+          excludeExtraneousValues: true,
+        }),
+        ledgerEntry: plainToInstance(WalletLedgerEntry, savedEntry, {
+          excludeExtraneousValues: true,
+        }),
+      };
+    });
+  }
+
+  async findLedgerEntry(
+    walletId: string,
+    transactionId: string,
+  ): Promise<WalletLedgerEntry | null> {
+    const entry = await this.ledgerRepository.findOne({
+      where: { walletId, transactionId },
+    });
+    return entry
+      ? plainToInstance(WalletLedgerEntry, entry, {
+          excludeExtraneousValues: true,
+        })
+      : null;
   }
 }
