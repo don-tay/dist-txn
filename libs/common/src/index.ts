@@ -2,3 +2,4 @@
 export * from './constants';
 export type * from './events';
 export * from './transformers';
+export * from './utils';

@@ -8,6 +8,7 @@ import {
 import {
   KAFKA_TOPICS,
   LedgerEntryType,
+  generateRefundTransactionId,
   type TransferInitiatedEvent,
   type WalletDebitedEvent,
   type WalletDebitFailedEvent,
@@ -135,9 +136,12 @@ export class KafkaEventHandler {
     await heartbeat();
 
     try {
+      // Generate deterministic refund transaction ID for idempotency
+      const refundTransactionId = generateRefundTransactionId(event.transferId);
+
       const result = await this.walletRepository.updateBalanceWithLedger(
         event.senderWalletId,
-        `${event.transferId}-refund`,
+        refundTransactionId,
         event.amount,
         LedgerEntryType.REFUND,
       );
@@ -153,7 +157,7 @@ export class KafkaEventHandler {
         `Refunded wallet ${event.senderWalletId}, new balance: ${String(result.wallet.balance)}`,
       );
     } catch (error) {
-      // TODO(Phase 4): Implement DLQ or retry mechanism for failed refunds.
+      // TODO: Implement DLQ or retry mechanism for failed refunds.
       // Failed refunds leave sender's balance debited without compensation,
       // requiring manual intervention or alerting system.
       this.logger.error(
