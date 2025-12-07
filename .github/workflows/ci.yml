@@ -94,20 +94,28 @@ jobs:
           docker compose exec -T kafka kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic transfer.failed --partitions 1 --replication-factor 1
           echo "All Kafka topics created"
 
-      - name: Wait for Kafka internal topics to initialize
+      - name: Wait for Kafka group coordinator to be ready
         run: |
-          echo "Waiting for Kafka group coordinator to be ready on external listener (localhost:9092)..."
-          for i in {1..30}; do
-            if docker compose exec -T kafka kafka-consumer-groups --bootstrap-server localhost:9092 --list > /dev/null 2>&1; then
-              echo "Kafka group coordinator is ready on external listener!"
-              sleep 10
-              echo "Kafka initialization complete"
+          echo "Testing actual consumer group creation (most reliable coordinator check)..."
+          for i in {1..60}; do
+            OUTPUT=$(docker compose exec -T kafka kafka-console-consumer \
+              --bootstrap-server localhost:9092 \
+              --topic __test_coordinator_check \
+              --group test-coordinator-group \
+              --timeout-ms 3000 \
+              --max-messages 0 2>&1) || true
+            
+            if echo "$OUTPUT" | grep -q "Processed a total of 0 messages"; then
+              echo "Attempt $i: SUCCESS - Group coordinator is ready!"
               exit 0
+            elif echo "$OUTPUT" | grep -qi "coordinator\|not available\|election\|ECONNRESET"; then
+              echo "Attempt $i: Coordinator not ready yet, waiting 3s..."
+            else
+              echo "Attempt $i: Checking... output: $OUTPUT"
             fi
-            echo "Attempt $i/30: Group coordinator not ready yet, waiting 5s..."
-            sleep 5
+            sleep 3
           done
-          echo "ERROR: Kafka group coordinator did not become ready in time"
+          echo "ERROR: Kafka group coordinator did not become ready in 3 minutes"
           exit 1
 
       - name: Run E2E tests
