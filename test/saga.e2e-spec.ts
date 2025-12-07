@@ -228,7 +228,7 @@ describe('Transfer Saga (e2e)', () => {
       expect(receiverAfter.body.balance).toBe(transferAmount);
     }, 30000); // 30 second timeout for saga completion
 
-    it('should be idempotent - processing same transfer twice produces same result', async () => {
+    it('should create exactly two ledger entries (debit + credit) for a successful transfer', async () => {
       // Create wallets
       const senderUserId = uuidv7();
       const senderResponse = await request(walletApp.getHttpServer())

@@ -10,6 +10,7 @@ import {
   type WalletDebitedEvent,
   type WalletDebitFailedEvent,
   type WalletCreditedEvent,
+  type WalletCreditFailedEvent,
   type WalletRefundedEvent,
   type TransferCompletedEvent,
   type TransferFailedEvent,
@@ -91,6 +92,32 @@ export class KafkaEventHandler {
         timestamp: new Date().toISOString(),
       };
       this.kafkaProducer.publishTransferCompleted(completedEvent);
+    }
+  }
+
+  @EventPattern(KAFKA_TOPICS.WALLET_CREDIT_FAILED)
+  async handleWalletCreditFailed(
+    @Payload() event: WalletCreditFailedEvent,
+    @Ctx() context: KafkaContext,
+  ): Promise<void> {
+    this.logger.log(`Received wallet.credit-failed: ${JSON.stringify(event)}`);
+    const heartbeat = context.getHeartbeat();
+    await heartbeat();
+
+    // Mark transfer as FAILED immediately when credit fails (before refund completes)
+    const transfer = await this.transferRepository.updateStatus(
+      event.transferId,
+      TransferStatus.FAILED,
+      event.reason,
+    );
+
+    if (transfer) {
+      const failedEvent: TransferFailedEvent = {
+        transferId: event.transferId,
+        reason: event.reason,
+        timestamp: new Date().toISOString(),
+      };
+      this.kafkaProducer.publishTransferFailed(failedEvent);
     }
   }
 
