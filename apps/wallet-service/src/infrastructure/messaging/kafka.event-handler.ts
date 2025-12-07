@@ -153,6 +153,9 @@ export class KafkaEventHandler {
         `Refunded wallet ${event.senderWalletId}, new balance: ${String(result.wallet.balance)}`,
       );
     } catch (error) {
+      // TODO(Phase 4): Implement DLQ or retry mechanism for failed refunds.
+      // Failed refunds leave sender's balance debited without compensation,
+      // requiring manual intervention or alerting system.
       this.logger.error(
         `CRITICAL: Refund failed for wallet ${event.senderWalletId}: ${(error as Error).message}`,
         (error as Error).stack,

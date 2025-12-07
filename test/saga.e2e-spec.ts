@@ -19,7 +19,7 @@ import { AppModule as WalletAppModule } from '../apps/wallet-service/src/app.mod
  * - PostgreSQL running with wallet_db and transaction_db databases
  * - Kafka running on localhost:9092
  *
- * Run with: npm run test:e2e
+ * Run with: npm run test:e2e:saga
  */
 describe('Transfer Saga (e2e)', () => {
   let transactionApp: INestApplication;

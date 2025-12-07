@@ -38,18 +38,27 @@ export class TransferRepositoryImpl implements TransferRepository {
     status: TransferStatus,
     failureReason?: string | null,
   ): Promise<Transfer | null> {
-    const entity = await this.ormRepository.findOne({
-      where: { transferId },
-    });
-    if (!entity) {
+    // Use atomic update to avoid race conditions between concurrent event handlers
+    const updateResult = await this.ormRepository.update(
+      { transferId },
+      {
+        status,
+        failureReason: failureReason ?? null,
+        updatedAt: new Date(),
+      },
+    );
+
+    if (updateResult.affected === 0) {
       return null;
     }
 
-    entity.status = status;
-    entity.failureReason = failureReason ?? null;
-    entity.updatedAt = new Date();
-
-    const saved = await this.ormRepository.save(entity);
-    return plainToInstance(Transfer, saved, { excludeExtraneousValues: true });
+    const updatedEntity = await this.ormRepository.findOne({
+      where: { transferId },
+    });
+    return updatedEntity
+      ? plainToInstance(Transfer, updatedEntity, {
+          excludeExtraneousValues: true,
+        })
+      : null;
   }
 }
