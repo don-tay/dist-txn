@@ -26,6 +26,10 @@ export class KafkaProducer implements OnModuleInit, OnModuleDestroy {
         this.configService.get<string>('KAFKA_BROKER', 'localhost:9092'),
       ],
       logLevel: logLevel.WARN,
+      retry: {
+        initialRetryTime: 1000,
+        retries: 10,
+      },
     });
     this.producer = this.kafka.producer({
       createPartitioner: Partitioners.DefaultPartitioner,
