@@ -88,19 +88,6 @@ jobs:
           '
           echo "Kafka is ready!"
 
-      - name: Create Kafka topics
-        run: |
-          echo "Creating Kafka topics..."
-          docker compose exec -T kafka kafka-topics --bootstrap-server localhost:9092 --create --if-not-exists --topic transfer.initiated --partitions 1 --replication-factor 1
-          docker compose exec -T kafka kafka-topics --bootstrap-server localhost:9092 --create --if-not-exists --topic wallet.debited --partitions 1 --replication-factor 1
-          docker compose exec -T kafka kafka-topics --bootstrap-server localhost:9092 --create --if-not-exists --topic wallet.debit-failed --partitions 1 --replication-factor 1
-          docker compose exec -T kafka kafka-topics --bootstrap-server localhost:9092 --create --if-not-exists --topic wallet.credited --partitions 1 --replication-factor 1
-          docker compose exec -T kafka kafka-topics --bootstrap-server localhost:9092 --create --if-not-exists --topic wallet.credit-failed --partitions 1 --replication-factor 1
-          docker compose exec -T kafka kafka-topics --bootstrap-server localhost:9092 --create --if-not-exists --topic wallet.refunded --partitions 1 --replication-factor 1
-          docker compose exec -T kafka kafka-topics --bootstrap-server localhost:9092 --create --if-not-exists --topic transfer.completed --partitions 1 --replication-factor 1
-          docker compose exec -T kafka kafka-topics --bootstrap-server localhost:9092 --create --if-not-exists --topic transfer.failed --partitions 1 --replication-factor 1
-          echo "All Kafka topics created"
-
       - name: Run Saga E2E tests
         env:
           WALLET_DB_HOST: localhost
