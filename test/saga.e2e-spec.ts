@@ -153,10 +153,11 @@ describe('Transfer Saga (e2e)', () => {
   }, 30000); // 30 second timeout for cleanup
 
   beforeEach(async () => {
-    // Clean up tables before each test
-    await transactionDataSource.query('DELETE FROM transfers');
-    await walletDataSource.query('DELETE FROM wallet_ledger_entries');
-    await walletDataSource.query('DELETE FROM wallets');
+    // Clean up tables before each test using TRUNCATE for proper cascade handling
+    await transactionDataSource.query('TRUNCATE TABLE transfers CASCADE');
+    await walletDataSource.query(
+      'TRUNCATE TABLE wallet_ledger_entries, wallets CASCADE',
+    );
   });
 
   describe('Happy Path - Successful Transfer', () => {
