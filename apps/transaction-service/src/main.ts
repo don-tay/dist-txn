@@ -57,4 +57,7 @@ async function bootstrap(): Promise<void> {
   logger.log(`Running on port ${String(port)}`);
 }
 
-void bootstrap();
+bootstrap().catch((err: unknown) => {
+  logger.error('Failed to bootstrap application', err);
+  process.exit(1);
+});

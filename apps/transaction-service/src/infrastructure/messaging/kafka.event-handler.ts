@@ -122,13 +122,14 @@ export class KafkaEventHandler {
   }
 
   @EventPattern(KAFKA_TOPICS.WALLET_REFUNDED)
-  handleWalletRefunded(
+  async handleWalletRefunded(
     @Payload() event: WalletRefundedEvent,
     @Ctx() context: KafkaContext,
-  ): void {
+  ): Promise<void> {
     this.logger.log(`Received wallet.refunded: ${JSON.stringify(event)}`);
     // Transfer should already be FAILED from credit-failed handling
     // This is logged for audit purposes
-    void context.getHeartbeat()();
+    const heartbeat = context.getHeartbeat();
+    await heartbeat();
   }
 }

@@ -29,6 +29,12 @@ export default tseslint.config(
   {
     files: ['**/*.ts'],
     rules: {
+      // Disallow void to suppress floating promises - force explicit handling
+      '@typescript-eslint/no-floating-promises': [
+        'error',
+        { ignoreVoid: false },
+      ],
+
       // Type imports - enforce consistency
       '@typescript-eslint/consistent-type-imports': [
         'error',
