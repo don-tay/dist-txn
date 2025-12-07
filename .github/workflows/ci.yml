@@ -99,7 +99,9 @@ jobs:
           echo "Waiting for Kafka group coordinator to be ready..."
           for i in {1..20}; do
             if docker compose exec -T kafka kafka-consumer-groups --bootstrap-server kafka:29092 --list > /dev/null 2>&1; then
-              echo "Kafka group coordinator is ready!"
+              echo "Kafka group coordinator check passed, waiting additional 30s for full initialization..."
+              sleep 30
+              echo "Kafka should be fully ready now"
               exit 0
             fi
             echo "Attempt $i/20: Group coordinator not ready yet, waiting 5s..."
