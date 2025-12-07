@@ -9,8 +9,8 @@ import { WalletOrmEntity } from './infrastructure/persistence/wallet.orm-entity'
 import { WalletLedgerEntryOrmEntity } from './infrastructure/persistence/wallet-ledger-entry.orm-entity';
 import { WalletRepositoryImpl } from './infrastructure/persistence/wallet.repository.impl';
 import { WALLET_REPOSITORY } from './domain/repositories/wallet.repository';
-import { KafkaProducer } from './infrastructure/messaging/kafka.producer';
-import { KafkaConsumer } from './infrastructure/messaging/kafka.consumer';
+import { KafkaModule } from './infrastructure/messaging/kafka.module';
+import { KafkaEventHandler } from './infrastructure/messaging/kafka.event-handler';
 
 @Module({
   imports: [
@@ -37,16 +37,15 @@ import { KafkaConsumer } from './infrastructure/messaging/kafka.consumer';
     }),
     TypeOrmModule.forFeature([WalletOrmEntity, WalletLedgerEntryOrmEntity]),
     TerminusModule,
+    KafkaModule,
   ],
-  controllers: [HealthController, WalletController],
+  controllers: [HealthController, WalletController, KafkaEventHandler],
   providers: [
     WalletService,
     {
       provide: WALLET_REPOSITORY,
       useClass: WalletRepositoryImpl,
     },
-    KafkaProducer,
-    KafkaConsumer,
   ],
 })
 export class AppModule {}

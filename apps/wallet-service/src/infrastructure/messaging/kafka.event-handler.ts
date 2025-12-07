@@ -1,111 +1,47 @@
+import { Controller, Inject, Logger } from '@nestjs/common';
 import {
-  Injectable,
-  OnModuleInit,
-  OnModuleDestroy,
-  Inject,
-  Logger,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { Kafka, Consumer, logLevel } from 'kafkajs';
+  EventPattern,
+  Payload,
+  Ctx,
+  KafkaContext,
+} from '@nestjs/microservices';
 import {
   KAFKA_TOPICS,
   LedgerEntryType,
-  TransferInitiatedEvent,
-  WalletDebitedEvent,
-  WalletDebitFailedEvent,
-  WalletCreditedEvent,
-  WalletCreditFailedEvent,
-  WalletRefundedEvent,
+  type TransferInitiatedEvent,
+  type WalletDebitedEvent,
+  type WalletDebitFailedEvent,
+  type WalletCreditedEvent,
+  type WalletCreditFailedEvent,
+  type WalletRefundedEvent,
 } from '@app/common';
 import {
   WALLET_REPOSITORY,
   type WalletRepository,
 } from '../../domain/repositories/wallet.repository';
-import { KafkaProducer } from './kafka.producer';
+import { KafkaProducerService } from './kafka.producer.service';
 
-@Injectable()
-export class KafkaConsumer implements OnModuleInit, OnModuleDestroy {
-  private readonly logger = new Logger(KafkaConsumer.name);
-  private readonly kafka: Kafka;
-  private readonly consumer: Consumer;
+@Controller()
+export class KafkaEventHandler {
+  private readonly logger = new Logger(KafkaEventHandler.name);
 
   constructor(
-    private readonly configService: ConfigService,
     @Inject(WALLET_REPOSITORY)
     private readonly walletRepository: WalletRepository,
-    private readonly kafkaProducer: KafkaProducer,
-  ) {
-    this.kafka = new Kafka({
-      clientId: 'wallet-service-consumer',
-      brokers: [
-        this.configService.get<string>('KAFKA_BROKER', 'localhost:9092'),
-      ],
-      logLevel: logLevel.WARN,
-      retry: {
-        initialRetryTime: 1000,
-        retries: 10,
-      },
-    });
-    this.consumer = this.kafka.consumer({
-      groupId: 'wallet-service-group',
-    });
-  }
-
-  async onModuleInit(): Promise<void> {
-    await this.consumer.connect();
-    await this.consumer.subscribe({
-      topics: [
-        KAFKA_TOPICS.TRANSFER_INITIATED,
-        KAFKA_TOPICS.WALLET_DEBITED,
-        KAFKA_TOPICS.WALLET_CREDIT_FAILED,
-      ],
-      fromBeginning: false,
-    });
-
-    await this.consumer.run({
-      eachMessage: async ({ topic, message }) => {
-        const value = message.value?.toString();
-        if (!value) return;
-
-        try {
-          const parsed: unknown = JSON.parse(value);
-          switch (topic) {
-            case KAFKA_TOPICS.TRANSFER_INITIATED:
-              await this.handleTransferInitiated(
-                parsed as TransferInitiatedEvent,
-              );
-              break;
-            case KAFKA_TOPICS.WALLET_DEBITED:
-              await this.handleWalletDebited(parsed as WalletDebitedEvent);
-              break;
-            case KAFKA_TOPICS.WALLET_CREDIT_FAILED:
-              await this.handleWalletCreditFailed(
-                parsed as WalletCreditFailedEvent,
-              );
-              break;
-          }
-        } catch (error) {
-          this.logger.error(
-            `Error processing message from ${topic}: ${String(error)}`,
-            (error as Error).stack,
-          );
-        }
-      },
-    });
-    this.logger.log('Kafka consumer connected and listening');
-  }
-
-  async onModuleDestroy(): Promise<void> {
-    await this.consumer.disconnect();
-  }
+    private readonly kafkaProducer: KafkaProducerService,
+  ) {}
 
   /**
    * Handle transfer.initiated event - debit sender wallet.
    */
-  private async handleTransferInitiated(
-    event: TransferInitiatedEvent,
+  @EventPattern(KAFKA_TOPICS.TRANSFER_INITIATED)
+  async handleTransferInitiated(
+    @Payload() event: TransferInitiatedEvent,
+    @Ctx() context: KafkaContext,
   ): Promise<void> {
     this.logger.log(`Received transfer.initiated: ${JSON.stringify(event)}`);
+    const heartbeat = context.getHeartbeat();
+    await heartbeat();
 
     try {
       const result = await this.walletRepository.updateBalanceWithLedger(
@@ -122,7 +58,7 @@ export class KafkaConsumer implements OnModuleInit, OnModuleDestroy {
         receiverWalletId: event.receiverWalletId,
         timestamp: new Date().toISOString(),
       };
-      await this.kafkaProducer.publishWalletDebited(debitedEvent);
+      this.kafkaProducer.publishWalletDebited(debitedEvent);
       this.logger.log(
         `Debited wallet ${event.senderWalletId}, new balance: ${String(result.wallet.balance)}`,
       );
@@ -133,7 +69,7 @@ export class KafkaConsumer implements OnModuleInit, OnModuleDestroy {
         reason: (error as Error).message,
         timestamp: new Date().toISOString(),
       };
-      await this.kafkaProducer.publishWalletDebitFailed(failedEvent);
+      this.kafkaProducer.publishWalletDebitFailed(failedEvent);
       this.logger.warn(
         `Debit failed for wallet ${event.senderWalletId}: ${(error as Error).message}`,
       );
@@ -143,8 +79,14 @@ export class KafkaConsumer implements OnModuleInit, OnModuleDestroy {
   /**
    * Handle wallet.debited event - credit receiver wallet.
    */
-  private async handleWalletDebited(event: WalletDebitedEvent): Promise<void> {
+  @EventPattern(KAFKA_TOPICS.WALLET_DEBITED)
+  async handleWalletDebited(
+    @Payload() event: WalletDebitedEvent,
+    @Ctx() context: KafkaContext,
+  ): Promise<void> {
     this.logger.log(`Received wallet.debited: ${JSON.stringify(event)}`);
+    const heartbeat = context.getHeartbeat();
+    await heartbeat();
 
     try {
       const result = await this.walletRepository.updateBalanceWithLedger(
@@ -160,7 +102,7 @@ export class KafkaConsumer implements OnModuleInit, OnModuleDestroy {
         amount: event.amount,
         timestamp: new Date().toISOString(),
       };
-      await this.kafkaProducer.publishWalletCredited(creditedEvent);
+      this.kafkaProducer.publishWalletCredited(creditedEvent);
       this.logger.log(
         `Credited wallet ${event.receiverWalletId}, new balance: ${String(result.wallet.balance)}`,
       );
@@ -173,7 +115,7 @@ export class KafkaConsumer implements OnModuleInit, OnModuleDestroy {
         amount: event.amount,
         timestamp: new Date().toISOString(),
       };
-      await this.kafkaProducer.publishWalletCreditFailed(failedEvent);
+      this.kafkaProducer.publishWalletCreditFailed(failedEvent);
       this.logger.warn(
         `Credit failed for wallet ${event.receiverWalletId}: ${(error as Error).message}`,
       );
@@ -183,10 +125,14 @@ export class KafkaConsumer implements OnModuleInit, OnModuleDestroy {
   /**
    * Handle wallet.credit-failed event - refund sender wallet (compensation).
    */
-  private async handleWalletCreditFailed(
-    event: WalletCreditFailedEvent,
+  @EventPattern(KAFKA_TOPICS.WALLET_CREDIT_FAILED)
+  async handleWalletCreditFailed(
+    @Payload() event: WalletCreditFailedEvent,
+    @Ctx() context: KafkaContext,
   ): Promise<void> {
     this.logger.log(`Received wallet.credit-failed: ${JSON.stringify(event)}`);
+    const heartbeat = context.getHeartbeat();
+    await heartbeat();
 
     try {
       const result = await this.walletRepository.updateBalanceWithLedger(
@@ -202,7 +148,7 @@ export class KafkaConsumer implements OnModuleInit, OnModuleDestroy {
         amount: event.amount,
         timestamp: new Date().toISOString(),
       };
-      await this.kafkaProducer.publishWalletRefunded(refundedEvent);
+      this.kafkaProducer.publishWalletRefunded(refundedEvent);
       this.logger.log(
         `Refunded wallet ${event.senderWalletId}, new balance: ${String(result.wallet.balance)}`,
       );

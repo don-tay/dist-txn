@@ -2,6 +2,8 @@ import type { INestApplication } from '@nestjs/common';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
+import { type MicroserviceOptions, Transport } from '@nestjs/microservices';
+import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { v7 as uuidv7 } from 'uuid';
@@ -63,6 +65,8 @@ describe('Transfer Saga (e2e)', () => {
   };
 
   beforeAll(async () => {
+    const kafkaBroker = process.env['KAFKA_BROKER'] ?? 'localhost:9092';
+
     // Bootstrap Transaction Service
     const transactionModule: TestingModule = await Test.createTestingModule({
       imports: [TransactionAppModule],
@@ -76,6 +80,26 @@ describe('Transfer Saga (e2e)', () => {
         transform: true,
       }),
     );
+
+    // Connect Kafka microservice for consuming events
+    transactionApp.connectMicroservice<MicroserviceOptions>({
+      transport: Transport.KAFKA,
+      options: {
+        client: {
+          clientId: 'transaction-service-consumer',
+          brokers: [kafkaBroker],
+          retry: {
+            initialRetryTime: 1000,
+            retries: 10,
+          },
+        },
+        consumer: {
+          groupId: 'transaction-service-group',
+        },
+      },
+    });
+
+    await transactionApp.startAllMicroservices();
     await transactionApp.init();
     transactionDataSource = transactionApp.get(DataSource);
 
@@ -92,6 +116,26 @@ describe('Transfer Saga (e2e)', () => {
         transform: true,
       }),
     );
+
+    // Connect Kafka microservice for consuming events
+    walletApp.connectMicroservice<MicroserviceOptions>({
+      transport: Transport.KAFKA,
+      options: {
+        client: {
+          clientId: 'wallet-service-consumer',
+          brokers: [kafkaBroker],
+          retry: {
+            initialRetryTime: 1000,
+            retries: 10,
+          },
+        },
+        consumer: {
+          groupId: 'wallet-service-group',
+        },
+      },
+    });
+
+    await walletApp.startAllMicroservices();
     await walletApp.init();
     walletDataSource = walletApp.get(DataSource);
 

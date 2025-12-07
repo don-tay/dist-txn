@@ -8,8 +8,8 @@ import { TransferService } from './application/services/transfer.service';
 import { TransferOrmEntity } from './infrastructure/persistence/transfer.orm-entity';
 import { TransferRepositoryImpl } from './infrastructure/persistence/transfer.repository.impl';
 import { TRANSFER_REPOSITORY } from './domain/repositories/transfer.repository';
-import { KafkaProducer } from './infrastructure/messaging/kafka.producer';
-import { KafkaConsumer } from './infrastructure/messaging/kafka.consumer';
+import { KafkaModule } from './infrastructure/messaging/kafka.module';
+import { KafkaEventHandler } from './infrastructure/messaging/kafka.event-handler';
 
 @Module({
   imports: [
@@ -45,16 +45,15 @@ import { KafkaConsumer } from './infrastructure/messaging/kafka.consumer';
     }),
     TypeOrmModule.forFeature([TransferOrmEntity]),
     TerminusModule,
+    KafkaModule,
   ],
-  controllers: [HealthController, TransferController],
+  controllers: [HealthController, TransferController, KafkaEventHandler],
   providers: [
     TransferService,
     {
       provide: TRANSFER_REPOSITORY,
       useClass: TransferRepositoryImpl,
     },
-    KafkaProducer,
-    KafkaConsumer,
   ],
 })
 export class AppModule {}

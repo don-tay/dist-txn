@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Logger, ValidationPipe } from '@nestjs/common';
+import { type MicroserviceOptions, Transport } from '@nestjs/microservices';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 
@@ -21,11 +22,35 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  // Note: Response serialization is handled explicitly via plainToInstance()
-  // in service methods, which applies @Expose() and @Transform() decorators.
-  // No ClassSerializerInterceptor needed.
-
   const configService = app.get(ConfigService);
+  const kafkaBroker = configService.get<string>(
+    'KAFKA_BROKER',
+    'localhost:9092',
+  );
+
+  // Connect Kafka microservice for consuming events
+  app.connectMicroservice<MicroserviceOptions>({
+    transport: Transport.KAFKA,
+    options: {
+      client: {
+        clientId: 'transaction-service-consumer',
+        brokers: [kafkaBroker],
+        retry: {
+          initialRetryTime: 1000,
+          retries: 10,
+        },
+      },
+      consumer: {
+        groupId: 'transaction-service-group',
+      },
+    },
+  });
+
+  // Start all microservices first
+  await app.startAllMicroservices();
+  logger.log('Kafka consumer microservice started');
+
+  // Then start HTTP server
   const port = configService.get<number>('PORT', 3000);
   await app.listen(port);
 

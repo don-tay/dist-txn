@@ -14,7 +14,7 @@ import {
   TransferResponseDto,
   CreateTransferResponseDto,
 } from '../dtos/transfer-response.dto';
-import { KafkaProducer } from '../../infrastructure/messaging/kafka.producer';
+import { KafkaProducerService } from '../../infrastructure/messaging/kafka.producer.service';
 
 @Injectable()
 export class TransferService {
@@ -23,7 +23,7 @@ export class TransferService {
   constructor(
     @Inject(TRANSFER_REPOSITORY)
     private readonly transferRepository: TransferRepository,
-    private readonly kafkaProducer: KafkaProducer,
+    private readonly kafkaProducer: KafkaProducerService,
   ) {}
 
   async createTransfer(
@@ -53,7 +53,7 @@ export class TransferService {
       amount: saved.amount,
       timestamp: now.toISOString(),
     };
-    await this.kafkaProducer.publishTransferInitiated(event);
+    this.kafkaProducer.publishTransferInitiated(event);
     this.logger.log(`Published transfer.initiated: ${saved.transferId}`);
 
     return plainToInstance(CreateTransferResponseDto, saved, {
