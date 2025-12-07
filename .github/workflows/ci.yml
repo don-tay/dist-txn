@@ -97,9 +97,18 @@ jobs:
       - name: Wait for Kafka internal topics to initialize
         run: |
           echo "Waiting for Kafka group coordinator to be ready..."
-          sleep 10
-          docker compose exec -T kafka kafka-consumer-groups --bootstrap-server kafka:29092 --list || true
-          echo "Kafka group coordinator should be ready now"
+          for i in {1..12}; do
+            if docker compose exec -T kafka kafka-consumer-groups --bootstrap-server kafka:29092 --list 2>&1 | grep -q "coordinator"; then
+              echo "Attempt $i: Group coordinator not ready yet, waiting 5s..."
+              sleep 5
+            else
+              echo "Kafka group coordinator is ready!"
+              break
+            fi
+          done
+          # Final verification
+          docker compose exec -T kafka kafka-consumer-groups --bootstrap-server kafka:29092 --list
+          echo "Kafka initialization complete"
 
       - name: Run E2E tests
         env:
