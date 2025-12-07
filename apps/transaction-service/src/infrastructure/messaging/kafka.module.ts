@@ -32,7 +32,7 @@ import { KafkaProducerService } from './kafka.producer.service';
       },
     ]),
   ],
-  providers: [KafkaProducerService],
-  exports: [KafkaProducerService],
+  providers: [KafkaProducerService] as const,
+  exports: [KafkaProducerService] as const,
 })
 export class KafkaModule {}
