@@ -1,7 +1,7 @@
 services:
   # PostgreSQL with both databases
   postgres:
-    image: postgres:18-alpine
+    image: postgres:16-alpine
     container_name: dist-txn-postgres
     environment:
       POSTGRES_USER: postgres
@@ -13,13 +13,13 @@ services:
       - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   # Zookeeper for Kafka
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.8.6
+    image: confluentinc/cp-zookeeper:7.4.0
     container_name: dist-txn-zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
@@ -28,20 +28,19 @@ services:
       - '2181:2181'
     healthcheck:
       test: ['CMD', 'nc', '-z', 'localhost', '2181']
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
-  # Kafka
+  # Kafka (using older stable version)
   kafka:
-    image: confluentinc/cp-kafka:7.8.6
+    image: confluentinc/cp-kafka:7.4.0
     container_name: dist-txn-kafka
     depends_on:
       zookeeper:
         condition: service_healthy
     ports:
       - '9092:9092'
-      - '29092:29092'
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -52,21 +51,16 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      # Reduce group coordinator initialization delay
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
     healthcheck:
-      test:
-        [
-          'CMD',
-          'kafka-topics',
-          '--bootstrap-server',
-          'localhost:9092',
-          '--list',
-        ]
-      interval: 10s
+      test: ['CMD-SHELL', 'kafka-topics --bootstrap-server localhost:9092 --list || exit 1']
+      interval: 5s
       timeout: 10s
-      retries: 10
-      start_period: 20s
+      retries: 20
+      start_period: 30s
 
-  # Kafka UI for debugging (optional but helpful)
+  # Kafka UI for debugging (optional)
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: dist-txn-kafka-ui
