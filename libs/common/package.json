@@ -1,0 +1,26 @@
+{
+  "name": "@app/common",
+  "version": "0.0.1",
+  "description": "Shared constants, types, and utilities",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "build": "swc src --out-dir dist --strip-leading-paths && tsc -p tsconfig.lib.json --emitDeclarationOnly",
+    "clean": "rm -rf dist"
+  },
+  "files": [
+    "dist"
+  ]
+}

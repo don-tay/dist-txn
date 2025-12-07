@@ -6,7 +6,11 @@ node_modules/
 # Build output
 dist/
 build/
+libs/*/dist/
 *.tsbuildinfo
+
+# SWC cache
+.swc/
 
 # NestJS
 .nest/

@@ -5,9 +5,8 @@
   "monorepo": true,
   "root": "apps/transaction-service",
   "compilerOptions": {
-    "builder": "swc",
-    "typeCheck": true,
-    "tsConfigPath": "apps/transaction-service/tsconfig.app.json",
+    "webpack": true,
+    "webpackConfigPath": "webpack.config.cjs",
     "assets": [],
     "watchAssets": false,
     "deleteOutDir": true
@@ -19,6 +18,8 @@
       "entryFile": "main",
       "sourceRoot": "apps/transaction-service/src",
       "compilerOptions": {
+        "webpack": true,
+        "webpackConfigPath": "webpack.config.cjs",
         "tsConfigPath": "apps/transaction-service/tsconfig.app.json"
       }
     },
@@ -28,6 +29,8 @@
       "entryFile": "main",
       "sourceRoot": "apps/wallet-service/src",
       "compilerOptions": {
+        "webpack": true,
+        "webpackConfigPath": "webpack.config.cjs",
         "tsConfigPath": "apps/wallet-service/tsconfig.app.json"
       }
     },
