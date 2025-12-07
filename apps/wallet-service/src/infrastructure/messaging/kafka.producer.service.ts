@@ -20,7 +20,7 @@ export class KafkaProducerService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     await this.kafkaClient.connect();
-    this.logger.log('Kafka producer connected');
+    this.logger.debug('Kafka producer connected');
   }
 
   publishWalletDebited(event: WalletDebitedEvent): void {

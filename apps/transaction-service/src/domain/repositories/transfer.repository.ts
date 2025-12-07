@@ -6,12 +6,24 @@ export interface TransferRepository {
   save(transfer: Transfer): Promise<Transfer>;
   findById(transferId: string): Promise<Transfer | null>;
   /**
-   * Update transfer status and optionally set failure reason.
-   * Returns null if transfer not found.
+   * Update transfer status with optimistic state machine validation.
+   *
+   * Uses atomic UPDATE with WHERE clause to enforce valid state transitions:
+   * - PENDING → DEBITED (debit succeeded)
+   * - PENDING → FAILED (debit failed)
+   * - DEBITED → COMPLETED (credit succeeded)
+   * - DEBITED → FAILED (credit failed)
+   *
+   * @param transferId - The transfer to update
+   * @param expectedStatus - Current status to validate (optimistic lock)
+   * @param newStatus - Target status to transition to
+   * @param failureReason - Optional reason if transitioning to FAILED
+   * @returns Updated transfer, or null if not found or invalid transition
    */
   updateStatus(
     transferId: string,
-    status: TransferStatus,
+    expectedStatus: TransferStatus,
+    newStatus: TransferStatus,
     failureReason?: string | null,
   ): Promise<Transfer | null>;
 }

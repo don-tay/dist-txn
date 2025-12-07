@@ -35,20 +35,28 @@ export class TransferRepositoryImpl implements TransferRepository {
 
   async updateStatus(
     transferId: string,
-    status: TransferStatus,
+    expectedStatus: TransferStatus,
+    newStatus: TransferStatus,
     failureReason?: string | null,
   ): Promise<Transfer | null> {
-    // Use atomic update to avoid race conditions between concurrent event handlers
-    const updateResult = await this.ormRepository.update(
-      { transferId },
-      {
-        status,
+    // Atomic update with optimistic state machine validation
+    // Only transitions from expectedStatus → newStatus are allowed
+    const updateResult = await this.ormRepository
+      .createQueryBuilder()
+      .update(TransferOrmEntity)
+      .set({
+        status: newStatus,
         failureReason: failureReason ?? null,
         updatedAt: new Date(),
-      },
-    );
+      })
+      .where('transferId = :transferId AND status = :expectedStatus', {
+        transferId,
+        expectedStatus,
+      })
+      .execute();
 
     if (updateResult.affected === 0) {
+      // Either transfer not found OR already in different state (idempotent)
       return null;
     }
 

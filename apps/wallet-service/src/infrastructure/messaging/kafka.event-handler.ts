@@ -40,7 +40,7 @@ export class KafkaEventHandler {
     @Payload() event: TransferInitiatedEvent,
     @Ctx() context: KafkaContext,
   ): Promise<void> {
-    this.logger.log(`Received transfer.initiated: ${JSON.stringify(event)}`);
+    this.logger.debug(`Received transfer.initiated: ${JSON.stringify(event)}`);
     const heartbeat = context.getHeartbeat();
     await heartbeat();
 
@@ -60,7 +60,7 @@ export class KafkaEventHandler {
         timestamp: new Date().toISOString(),
       };
       this.kafkaProducer.publishWalletDebited(debitedEvent);
-      this.logger.log(
+      this.logger.debug(
         `Debited wallet ${event.senderWalletId}, new balance: ${String(result.wallet.balance)}`,
       );
     } catch (error) {
@@ -85,7 +85,7 @@ export class KafkaEventHandler {
     @Payload() event: WalletDebitedEvent,
     @Ctx() context: KafkaContext,
   ): Promise<void> {
-    this.logger.log(`Received wallet.debited: ${JSON.stringify(event)}`);
+    this.logger.debug(`Received wallet.debited: ${JSON.stringify(event)}`);
     const heartbeat = context.getHeartbeat();
     await heartbeat();
 
@@ -104,7 +104,7 @@ export class KafkaEventHandler {
         timestamp: new Date().toISOString(),
       };
       this.kafkaProducer.publishWalletCredited(creditedEvent);
-      this.logger.log(
+      this.logger.debug(
         `Credited wallet ${event.receiverWalletId}, new balance: ${String(result.wallet.balance)}`,
       );
     } catch (error) {
@@ -131,7 +131,9 @@ export class KafkaEventHandler {
     @Payload() event: WalletCreditFailedEvent,
     @Ctx() context: KafkaContext,
   ): Promise<void> {
-    this.logger.log(`Received wallet.credit-failed: ${JSON.stringify(event)}`);
+    this.logger.debug(
+      `Received wallet.credit-failed: ${JSON.stringify(event)}`,
+    );
     const heartbeat = context.getHeartbeat();
     await heartbeat();
 
@@ -153,7 +155,7 @@ export class KafkaEventHandler {
         timestamp: new Date().toISOString(),
       };
       this.kafkaProducer.publishWalletRefunded(refundedEvent);
-      this.logger.log(
+      this.logger.debug(
         `Refunded wallet ${event.senderWalletId}, new balance: ${String(result.wallet.balance)}`,
       );
     } catch (error) {
