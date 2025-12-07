@@ -70,7 +70,10 @@ describe('WalletService (e2e)', () => {
             type: 'postgres',
             host: configService.get<string>('WALLET_DB_HOST', 'localhost'),
             port: configService.get<number>('WALLET_DB_PORT', 5432),
-            username: configService.get<string>('WALLET_DB_USER', 'wallet_user'),
+            username: configService.get<string>(
+              'WALLET_DB_USER',
+              'wallet_user',
+            ),
             password: configService.get<string>(
               'WALLET_DB_PASSWORD',
               'wallet_pass',
