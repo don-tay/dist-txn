@@ -9,6 +9,9 @@ build/
 libs/*/dist/
 *.tsbuildinfo
 
+# SWC cache
+.swc/
+
 # NestJS
 .nest/
 

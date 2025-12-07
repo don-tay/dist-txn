@@ -20,9 +20,17 @@ import { KafkaProducerService } from './kafka.producer.service';
                 configService.get<string>('KAFKA_BROKER', 'localhost:9092'),
               ],
               retry: {
-                initialRetryTime: 1000,
-                retries: 10,
+                initialRetryTime: 100,
+                retries: 5,
               },
+              connectionTimeout: 1000,
+            },
+            consumer: {
+              // Faster rebalancing for the internal request-reply consumer
+              sessionTimeout: 6000,
+              heartbeatInterval: 1000,
+              rebalanceTimeout: 5000,
+              groupId: 'transaction-service-client',
             },
             producer: {
               allowAutoTopicCreation: true,

@@ -36,12 +36,17 @@ async function bootstrap(): Promise<void> {
         clientId: 'wallet-service-consumer',
         brokers: [kafkaBroker],
         retry: {
-          initialRetryTime: 1000,
-          retries: 10,
+          initialRetryTime: 100,
+          retries: 5,
         },
+        connectionTimeout: 1000,
       },
       consumer: {
         groupId: 'wallet-service-group',
+        // Faster rebalancing for local dev (default sessionTimeout is 30s)
+        sessionTimeout: 6000,
+        heartbeatInterval: 1000,
+        rebalanceTimeout: 5000,
       },
     },
   });
