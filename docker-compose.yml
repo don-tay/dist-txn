@@ -61,9 +61,10 @@ services:
           'localhost:9092',
           '--list',
         ]
-      interval: 30s
+      interval: 10s
       timeout: 10s
-      retries: 5
+      retries: 10
+      start_period: 20s
 
   # Kafka UI for debugging (optional but helpful)
   kafka-ui:
