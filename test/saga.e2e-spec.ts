@@ -376,4 +376,173 @@ describe('Transfer Saga (e2e)', () => {
       expect(finalTransfer.body.failureReason).toContain('Wallet not found');
     }, 30000);
   });
+
+  describe('Compensation Path - Credit Failure with Refund', () => {
+    it('should refund sender when receiver wallet does not exist', async () => {
+      // 1. Create sender wallet with balance
+      const senderUserId = uuidv7();
+      const senderResponse = await request(walletApp.getHttpServer())
+        .post('/wallets')
+        .send({ userId: senderUserId })
+        .expect(201);
+      const senderWalletId = senderResponse.body.walletId as string;
+
+      // Seed sender with initial balance
+      const initialBalance = 10000; // $100.00 in cents
+      await walletDataSource.query(
+        'UPDATE wallets SET balance = $1 WHERE wallet_id = $2',
+        [initialBalance, senderWalletId],
+      );
+
+      // 2. Use non-existent receiver wallet
+      const nonExistentReceiverWalletId = uuidv7();
+
+      // 3. Initiate transfer
+      const transferAmount = 5000; // $50.00 in cents
+      const transferResponse = await request(transactionApp.getHttpServer())
+        .post('/transfers')
+        .send({
+          senderWalletId,
+          receiverWalletId: nonExistentReceiverWalletId,
+          amount: transferAmount,
+        })
+        .expect(202);
+
+      const transferId = transferResponse.body.transferId as string;
+
+      // 4. Wait for saga to fail (credit fails, then refund occurs)
+      await waitForSagaCompletion(transferId, 'FAILED');
+
+      // 5. Verify transfer failed with reason
+      const finalTransfer = await request(transactionApp.getHttpServer())
+        .get(`/transfers/${transferId}`)
+        .expect(200);
+      expect(finalTransfer.body.status).toBe('FAILED');
+      expect(finalTransfer.body.failureReason).toContain('Wallet not found');
+
+      // 6. Verify sender balance is restored (debit was refunded)
+      // Give a small buffer for refund to complete
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const senderAfter = await request(walletApp.getHttpServer())
+        .get(`/wallets/${senderWalletId}`)
+        .expect(200);
+      expect(senderAfter.body.balance).toBe(initialBalance);
+    }, 30000);
+
+    it('should create debit and refund ledger entries after credit failure compensation', async () => {
+      // 1. Create sender wallet with balance
+      const senderUserId = uuidv7();
+      const senderResponse = await request(walletApp.getHttpServer())
+        .post('/wallets')
+        .send({ userId: senderUserId })
+        .expect(201);
+      const senderWalletId = senderResponse.body.walletId as string;
+
+      // Seed sender with balance
+      const initialBalance = 10000;
+      await walletDataSource.query(
+        'UPDATE wallets SET balance = $1 WHERE wallet_id = $2',
+        [initialBalance, senderWalletId],
+      );
+
+      // 2. Non-existent receiver to trigger credit failure
+      const nonExistentReceiverWalletId = uuidv7();
+
+      // 3. Create transfer
+      const transferAmount = 3000;
+      const transferResponse = await request(transactionApp.getHttpServer())
+        .post('/transfers')
+        .send({
+          senderWalletId,
+          receiverWalletId: nonExistentReceiverWalletId,
+          amount: transferAmount,
+        })
+        .expect(202);
+
+      const transferId = transferResponse.body.transferId as string;
+
+      // 4. Wait for saga completion and refund
+      await waitForSagaCompletion(transferId, 'FAILED');
+      // Extra wait for refund to complete
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // 5. Verify ledger entries: should have DEBIT and REFUND for sender
+      const senderLedgerEntries = await walletDataSource.query(
+        `SELECT type, amount FROM wallet_ledger_entries 
+         WHERE wallet_id = $1 
+         ORDER BY created_at ASC`,
+        [senderWalletId],
+      );
+
+      expect(senderLedgerEntries).toHaveLength(2);
+      expect(senderLedgerEntries[0].type).toBe('DEBIT');
+      expect(Number(senderLedgerEntries[0].amount)).toBe(transferAmount);
+      expect(senderLedgerEntries[1].type).toBe('REFUND');
+      expect(Number(senderLedgerEntries[1].amount)).toBe(transferAmount);
+
+      // 6. Verify no ledger entries for non-existent receiver
+      const receiverLedgerEntries = await walletDataSource.query(
+        `SELECT * FROM wallet_ledger_entries WHERE wallet_id = $1`,
+        [nonExistentReceiverWalletId],
+      );
+      expect(receiverLedgerEntries).toHaveLength(0);
+
+      // 7. Verify sender balance restored
+      const senderAfter = await request(walletApp.getHttpServer())
+        .get(`/wallets/${senderWalletId}`)
+        .expect(200);
+      expect(senderAfter.body.balance).toBe(initialBalance);
+    }, 30000);
+
+    it('should handle compensation idempotently when refund is replayed', async () => {
+      // 1. Create sender wallet with balance
+      const senderUserId = uuidv7();
+      const senderResponse = await request(walletApp.getHttpServer())
+        .post('/wallets')
+        .send({ userId: senderUserId })
+        .expect(201);
+      const senderWalletId = senderResponse.body.walletId as string;
+
+      const initialBalance = 10000;
+      await walletDataSource.query(
+        'UPDATE wallets SET balance = $1 WHERE wallet_id = $2',
+        [initialBalance, senderWalletId],
+      );
+
+      // 2. Non-existent receiver
+      const nonExistentReceiverWalletId = uuidv7();
+
+      // 3. Create transfer
+      const transferAmount = 2000;
+      const transferResponse = await request(transactionApp.getHttpServer())
+        .post('/transfers')
+        .send({
+          senderWalletId,
+          receiverWalletId: nonExistentReceiverWalletId,
+          amount: transferAmount,
+        })
+        .expect(202);
+
+      const transferId = transferResponse.body.transferId as string;
+
+      // 4. Wait for saga completion
+      await waitForSagaCompletion(transferId, 'FAILED');
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // 5. Verify only one refund entry exists (idempotency)
+      const refundEntries = await walletDataSource.query(
+        `SELECT * FROM wallet_ledger_entries 
+         WHERE wallet_id = $1 AND type = 'REFUND'`,
+        [senderWalletId],
+      );
+      expect(refundEntries).toHaveLength(1);
+
+      // 6. Verify final balance is correct (not double-refunded)
+      const senderAfter = await request(walletApp.getHttpServer())
+        .get(`/wallets/${senderWalletId}`)
+        .expect(200);
+      expect(senderAfter.body.balance).toBe(initialBalance);
+    }, 30000);
+  });
 });
