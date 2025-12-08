@@ -76,16 +76,15 @@ export class WalletRepositoryImpl implements WalletRepository {
       // Atomic balance update using relative update (optimistic, no retry)
       // PostgreSQL row-level locking during UPDATE ensures correctness
       const isDebit = type === LedgerEntryType.DEBIT;
-      const balanceExpr = isDebit
-        ? `balance - ${String(amount)}`
-        : `balance + ${String(amount)}`;
       const updateResult = await walletRepo
         .createQueryBuilder()
         .update(WalletOrmEntity)
         .set({
-          balance: () => balanceExpr,
+          balance: () =>
+            isDebit ? 'balance - :amountValue' : 'balance + :amountValue',
           updatedAt: new Date(),
         })
+        .setParameter('amountValue', amount)
         .where(
           isDebit
             ? 'wallet_id = :walletId AND balance >= :amount'
@@ -120,6 +119,10 @@ export class WalletRepositoryImpl implements WalletRepository {
       const updatedWallet = await walletRepo.findOne({
         where: { walletId },
       });
+
+      if (!updatedWallet) {
+        throw new Error(`Wallet disappeared after update: ${walletId}`);
+      }
 
       return {
         wallet: plainToInstance(Wallet, updatedWallet, {
