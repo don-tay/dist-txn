@@ -53,13 +53,13 @@ async function bootstrap(): Promise<void> {
 
   // Start all microservices first
   await app.startAllMicroservices();
-  logger.log('Kafka consumer microservice started');
+  logger.debug('Kafka consumer microservice started');
 
   // Then start HTTP server
   const port = configService.get<number>('PORT', 3001);
   await app.listen(port);
 
-  logger.log(`Running on port ${String(port)}`);
+  logger.debug(`Running on port ${String(port)}`);
 }
 
 bootstrap().catch((err: unknown) => {

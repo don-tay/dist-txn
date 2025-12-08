@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { v7 as uuidv7 } from 'uuid';
 import type { TransferInitiatedEvent } from '@app/common';
@@ -18,8 +18,6 @@ import { KafkaProducerService } from '../../infrastructure/messaging/kafka.produ
 
 @Injectable()
 export class TransferService {
-  private readonly logger = new Logger(TransferService.name);
-
   constructor(
     @Inject(TRANSFER_REPOSITORY)
     private readonly transferRepository: TransferRepository,
@@ -54,7 +52,6 @@ export class TransferService {
       timestamp: now.toISOString(),
     };
     this.kafkaProducer.publishTransferInitiated(event);
-    this.logger.log(`Published transfer.initiated: ${saved.transferId}`);
 
     return plainToInstance(CreateTransferResponseDto, saved, {
       excludeExtraneousValues: true,

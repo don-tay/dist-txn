@@ -33,7 +33,7 @@ describe('Transfer Saga (e2e)', () => {
     transferId: string,
     expectedStatus: string,
     maxWaitMs = 10000,
-    intervalMs = 500,
+    intervalMs = 100,
   ): Promise<void> => {
     const startTime = Date.now();
     while (Date.now() - startTime < maxWaitMs) {
@@ -88,12 +88,16 @@ describe('Transfer Saga (e2e)', () => {
           clientId: 'transaction-service-consumer',
           brokers: [kafkaBroker],
           retry: {
-            initialRetryTime: 1000,
-            retries: 10,
+            initialRetryTime: 100,
+            retries: 5,
           },
+          connectionTimeout: 1000,
         },
         consumer: {
           groupId: 'transaction-service-group',
+          sessionTimeout: 6000,
+          heartbeatInterval: 100,
+          rebalanceTimeout: 5000,
         },
       },
     });
@@ -124,12 +128,16 @@ describe('Transfer Saga (e2e)', () => {
           clientId: 'wallet-service-consumer',
           brokers: [kafkaBroker],
           retry: {
-            initialRetryTime: 1000,
-            retries: 10,
+            initialRetryTime: 100,
+            retries: 5,
           },
+          connectionTimeout: 1000,
         },
         consumer: {
           groupId: 'wallet-service-group',
+          sessionTimeout: 6000,
+          heartbeatInterval: 100,
+          rebalanceTimeout: 5000,
         },
       },
     });
@@ -142,12 +150,12 @@ describe('Transfer Saga (e2e)', () => {
     await transactionDataSource.synchronize(true);
     await walletDataSource.synchronize(true);
 
-    logger.log('Test services initialized');
+    logger.debug('Test services initialized');
   }, 60000); // 60 second timeout for service initialization
 
   afterAll(async () => {
     // Give Kafka time to finish any pending operations
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 100));
     await transactionApp.close();
     await walletApp.close();
   }, 30000); // 30 second timeout for cleanup
@@ -422,7 +430,7 @@ describe('Transfer Saga (e2e)', () => {
 
       // 6. Verify sender balance is restored (debit was refunded)
       // Give a small buffer for refund to complete
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const senderAfter = await request(walletApp.getHttpServer())
         .get(`/wallets/${senderWalletId}`)
@@ -465,7 +473,7 @@ describe('Transfer Saga (e2e)', () => {
       // 4. Wait for saga completion and refund
       await waitForSagaCompletion(transferId, 'FAILED');
       // Extra wait for refund to complete
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // 5. Verify ledger entries: should have DEBIT and REFUND for sender
       const senderLedgerEntries = await walletDataSource.query(
@@ -528,7 +536,7 @@ describe('Transfer Saga (e2e)', () => {
 
       // 4. Wait for saga completion
       await waitForSagaCompletion(transferId, 'FAILED');
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // 5. Verify only one refund entry exists (idempotency)
       const refundEntries = await walletDataSource.query(

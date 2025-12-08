@@ -37,12 +37,14 @@ export class KafkaEventHandler {
     @Payload() event: WalletDebitedEvent,
     @Ctx() context: KafkaContext,
   ): Promise<void> {
-    this.logger.log(`Received wallet.debited: ${JSON.stringify(event)}`);
+    this.logger.debug(`Received wallet.debited: ${JSON.stringify(event)}`);
     const heartbeat = context.getHeartbeat();
     await heartbeat();
 
+    // State transition: PENDING → DEBITED
     await this.transferRepository.updateStatus(
       event.transferId,
+      TransferStatus.PENDING,
       TransferStatus.DEBITED,
     );
   }
@@ -52,12 +54,14 @@ export class KafkaEventHandler {
     @Payload() event: WalletDebitFailedEvent,
     @Ctx() context: KafkaContext,
   ): Promise<void> {
-    this.logger.log(`Received wallet.debit-failed: ${JSON.stringify(event)}`);
+    this.logger.debug(`Received wallet.debit-failed: ${JSON.stringify(event)}`);
     const heartbeat = context.getHeartbeat();
     await heartbeat();
 
+    // State transition: PENDING → FAILED (debit failed, nothing to compensate)
     const transfer = await this.transferRepository.updateStatus(
       event.transferId,
+      TransferStatus.PENDING,
       TransferStatus.FAILED,
       event.reason,
     );
@@ -77,12 +81,14 @@ export class KafkaEventHandler {
     @Payload() event: WalletCreditedEvent,
     @Ctx() context: KafkaContext,
   ): Promise<void> {
-    this.logger.log(`Received wallet.credited: ${JSON.stringify(event)}`);
+    this.logger.debug(`Received wallet.credited: ${JSON.stringify(event)}`);
     const heartbeat = context.getHeartbeat();
     await heartbeat();
 
+    // State transition: DEBITED → COMPLETED (happy path complete)
     const transfer = await this.transferRepository.updateStatus(
       event.transferId,
+      TransferStatus.DEBITED,
       TransferStatus.COMPLETED,
     );
 
@@ -100,13 +106,16 @@ export class KafkaEventHandler {
     @Payload() event: WalletCreditFailedEvent,
     @Ctx() context: KafkaContext,
   ): Promise<void> {
-    this.logger.log(`Received wallet.credit-failed: ${JSON.stringify(event)}`);
+    this.logger.debug(
+      `Received wallet.credit-failed: ${JSON.stringify(event)}`,
+    );
     const heartbeat = context.getHeartbeat();
     await heartbeat();
 
-    // Mark transfer as FAILED immediately when credit fails (before refund completes)
+    // State transition: DEBITED → FAILED (credit failed, compensation in progress)
     const transfer = await this.transferRepository.updateStatus(
       event.transferId,
+      TransferStatus.DEBITED,
       TransferStatus.FAILED,
       event.reason,
     );
@@ -126,7 +135,7 @@ export class KafkaEventHandler {
     @Payload() event: WalletRefundedEvent,
     @Ctx() context: KafkaContext,
   ): Promise<void> {
-    this.logger.log(`Received wallet.refunded: ${JSON.stringify(event)}`);
+    this.logger.debug(`Received wallet.refunded: ${JSON.stringify(event)}`);
     // Transfer should already be FAILED from credit-failed handling
     // This is logged for audit purposes
     const heartbeat = context.getHeartbeat();

@@ -73,31 +73,38 @@ export class WalletRepositoryImpl implements WalletRepository {
         };
       }
 
-      // Lock wallet row for update
-      const wallet = await walletRepo.findOne({
-        where: { walletId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!wallet) {
-        throw new Error(`Wallet not found: ${walletId}`);
-      }
+      // Atomic balance update using relative update (optimistic, no retry)
+      // PostgreSQL row-level locking during UPDATE ensures correctness
+      const isDebit = type === LedgerEntryType.DEBIT;
+      const updateResult = await walletRepo
+        .createQueryBuilder()
+        .update(WalletOrmEntity)
+        .set({
+          balance: () =>
+            isDebit ? 'balance - :amountValue' : 'balance + :amountValue',
+          updatedAt: new Date(),
+        })
+        .setParameter('amountValue', amount)
+        .where(
+          isDebit
+            ? 'wallet_id = :walletId AND balance >= :amount'
+            : 'wallet_id = :walletId',
+          { walletId, amount },
+        )
+        .execute();
 
-      // Calculate new balance
-      const balanceChange = type === LedgerEntryType.DEBIT ? -amount : amount;
-      const newBalance = wallet.balance + balanceChange;
-
-      if (newBalance < 0) {
+      if (updateResult.affected !== 1) {
+        // Distinguish: wallet not found vs insufficient balance
+        const wallet = await walletRepo.findOne({ where: { walletId } });
+        if (!wallet) {
+          throw new Error(`Wallet not found: ${walletId}`);
+        }
         throw new Error(
           `Insufficient balance: current=${String(wallet.balance)}, required=${String(amount)}`,
         );
       }
 
-      // Update wallet balance
-      wallet.balance = newBalance;
-      wallet.updatedAt = new Date();
-      const savedWallet = await walletRepo.save(wallet);
-
-      // Create ledger entry
+      // Create ledger entry for audit trail
       const ledgerEntry = ledgerRepo.create({
         entryId: uuidv7(),
         walletId,
@@ -108,8 +115,17 @@ export class WalletRepositoryImpl implements WalletRepository {
       });
       const savedEntry = await ledgerRepo.save(ledgerEntry);
 
+      // Fetch updated wallet for return
+      const updatedWallet = await walletRepo.findOne({
+        where: { walletId },
+      });
+
+      if (!updatedWallet) {
+        throw new Error(`Wallet disappeared after update: ${walletId}`);
+      }
+
       return {
-        wallet: plainToInstance(Wallet, savedWallet, {
+        wallet: plainToInstance(Wallet, updatedWallet, {
           excludeExtraneousValues: true,
         }),
         ledgerEntry: plainToInstance(WalletLedgerEntry, savedEntry, {
