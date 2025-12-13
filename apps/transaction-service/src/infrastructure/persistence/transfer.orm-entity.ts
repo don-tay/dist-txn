@@ -39,6 +39,10 @@ export class TransferOrmEntity {
   @Expose()
   failureReason!: string | null;
 
+  @Column({ name: 'timeout_at', type: 'timestamptz' })
+  @Expose()
+  timeoutAt!: Date;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   @Expose()
   createdAt!: Date;

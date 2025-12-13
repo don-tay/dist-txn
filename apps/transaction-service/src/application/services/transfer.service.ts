@@ -1,4 +1,5 @@
 import { Injectable, Inject, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { plainToInstance } from 'class-transformer';
 import { v7 as uuidv7 } from 'uuid';
 import type { TransferInitiatedEvent } from '@app/common';
@@ -16,13 +17,24 @@ import {
 } from '../dtos/transfer-response.dto';
 import { KafkaProducerService } from '../../infrastructure/messaging/kafka.producer.service';
 
+/** Default saga timeout in milliseconds (60 seconds for learning) */
+const DEFAULT_SAGA_TIMEOUT_MS = 60_000;
+
 @Injectable()
 export class TransferService {
+  private readonly sagaTimeoutMs: number;
+
   constructor(
     @Inject(TRANSFER_REPOSITORY)
     private readonly transferRepository: TransferRepository,
     private readonly kafkaProducer: KafkaProducerService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.sagaTimeoutMs = this.configService.get<number>(
+      'SAGA_TIMEOUT_MS',
+      DEFAULT_SAGA_TIMEOUT_MS,
+    );
+  }
 
   async createTransfer(
     senderWalletId: string,
@@ -30,6 +42,7 @@ export class TransferService {
     amount: number,
   ): Promise<CreateTransferResponseDto> {
     const now = new Date();
+    const timeoutAt = new Date(now.getTime() + this.sagaTimeoutMs);
     const transfer = Transfer.create({
       transferId: uuidv7(),
       senderWalletId,
@@ -37,6 +50,7 @@ export class TransferService {
       amount,
       status: TransferStatus.PENDING,
       failureReason: null,
+      timeoutAt,
       createdAt: now,
       updatedAt: now,
     });

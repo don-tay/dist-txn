@@ -1,12 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, LessThan, In } from 'typeorm';
 import { plainToInstance } from 'class-transformer';
 import {
   Transfer,
   TransferStatus,
 } from '../../domain/entities/transfer.entity';
-import type { TransferRepository } from '../../domain/repositories/transfer.repository';
+import type {
+  TransferRepository,
+  StuckTransfer,
+} from '../../domain/repositories/transfer.repository';
 import { TransferOrmEntity } from './transfer.orm-entity';
 
 @Injectable()
@@ -68,5 +71,25 @@ export class TransferRepositoryImpl implements TransferRepository {
           excludeExtraneousValues: true,
         })
       : null;
+  }
+
+  async findStuckTransfers(limit = 100): Promise<StuckTransfer[]> {
+    const now = new Date();
+    const stuckEntities = await this.ormRepository.find({
+      where: {
+        status: In([TransferStatus.PENDING, TransferStatus.DEBITED]),
+        timeoutAt: LessThan(now),
+      },
+      take: limit,
+      order: { timeoutAt: 'ASC' },
+    });
+
+    return stuckEntities.map((entity) => ({
+      transfer: plainToInstance(Transfer, entity, {
+        excludeExtraneousValues: true,
+      }),
+      receiverWalletId: entity.receiverWalletId,
+      amount: entity.amount,
+    }));
   }
 }
