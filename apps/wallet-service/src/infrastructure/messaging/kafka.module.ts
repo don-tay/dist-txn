@@ -33,9 +33,9 @@ import { DeadLetterOrmEntity } from '../persistence/dead-letter.orm-entity';
             },
             consumer: {
               // Faster rebalancing for the internal request-reply consumer
-              sessionTimeout: 2000,
-              heartbeatInterval: 1000,
-              rebalanceTimeout: 2000,
+              sessionTimeout: 6000,
+              heartbeatInterval: 100,
+              rebalanceTimeout: 5000,
               groupId: 'wallet-service-client',
             },
             producer: {
