@@ -44,9 +44,9 @@ async function bootstrap(): Promise<void> {
       consumer: {
         groupId: 'wallet-service-group',
         // Faster rebalancing for local dev (default sessionTimeout is 30s)
-        sessionTimeout: 6000,
+        sessionTimeout: 2000,
         heartbeatInterval: 1000,
-        rebalanceTimeout: 5000,
+        rebalanceTimeout: 2000,
       },
     },
   });

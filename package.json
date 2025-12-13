@@ -29,6 +29,7 @@
     "test:cov": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
     "test:e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./test/jest-e2e.json",
     "test:e2e:saga": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./test/jest-e2e.json test/saga.e2e-spec.ts",
+    "test:e2e:dlq": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./test/jest-e2e.json test/dlq.e2e-spec.ts",
     "test:e2e:transaction-service": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./apps/transaction-service/test/jest-e2e.cjs",
     "test:e2e:wallet-service": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./apps/wallet-service/test/jest-e2e.cjs",
     "docker:up": "docker compose up -d",
@@ -52,6 +53,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "typeorm": "^0.3.28",
+    "typescript-retry-decorator": "^2.4.2",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
