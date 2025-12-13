@@ -28,14 +28,6 @@ export class DeadLetterOrmEntity {
   @Expose()
   attemptCount!: number;
 
-  @Column({ name: 'first_attempt_at', type: 'timestamptz' })
-  @Expose()
-  firstAttemptAt!: Date;
-
-  @Column({ name: 'last_attempt_at', type: 'timestamptz' })
-  @Expose()
-  lastAttemptAt!: Date;
-
   @Column({
     name: 'status',
     type: 'varchar',

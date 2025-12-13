@@ -452,7 +452,7 @@ Subsequent phases to deepen distributed systems understanding, ordered by founda
 | Component | Description |
 |-----------|-------------|
 | DLQ Topics | `*.dlq` suffix (e.g., `wallet.credit-failed.dlq`) |
-| Retry Policy | 3 retries with exponential backoff (100ms, 500ms, 2s) |
+| Retry Policy | 3 retries with exponential backoff (100ms, 200ms, 400ms) |
 | DLQ Routing | After max retries, route to DLQ with original payload + error metadata |
 | Admin API | `GET /admin/dlq` - list DLQ messages; `POST /admin/dlq/{id}/replay` - retry message |
 
@@ -464,8 +464,6 @@ interface DlqMessage {
   errorMessage: string;
   errorStack: string;
   attemptCount: number;
-  firstAttemptAt: string;
-  lastAttemptAt: string;
 }
 ```
 

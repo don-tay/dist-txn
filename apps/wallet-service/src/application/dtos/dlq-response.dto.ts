@@ -20,14 +20,6 @@ export class DlqEntryResponseDto {
   attemptCount!: number;
 
   @Expose()
-  @Transform(({ value }: { value: Date }) => value.toISOString())
-  firstAttemptAt!: string;
-
-  @Expose()
-  @Transform(({ value }: { value: Date }) => value.toISOString())
-  lastAttemptAt!: string;
-
-  @Expose()
   status!: string;
 
   @Expose()

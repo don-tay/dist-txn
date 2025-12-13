@@ -82,7 +82,7 @@ describe('Dead Letter Queue (e2e)', () => {
   beforeEach(async () => {
     // Clean up tables before each test
     await walletDataSource.query(
-      'TRUNCATE TABLE wallet_ledger_entries, wallets, dead_letter_queue CASCADE',
+      'TRUNCATE TABLE dead_letter_queue, wallet_ledger_entries, wallets CASCADE',
     );
   });
 
@@ -104,10 +104,10 @@ describe('Dead Letter Queue (e2e)', () => {
       await walletDataSource.query(
         `INSERT INTO dead_letter_queue 
          (id, original_topic, original_payload, error_message, error_stack, 
-          attempt_count, first_attempt_at, last_attempt_at, status, created_at)
+          attempt_count, status, created_at)
          VALUES 
-         ($1, 'wallet.credit-failed', '{"transferId": "test1"}', 'Test error', NULL, 3, NOW(), NOW(), 'PENDING', NOW()),
-         ($2, 'wallet.credit-failed', '{"transferId": "test2"}', 'Test error', NULL, 3, NOW(), NOW(), 'PROCESSED', NOW())`,
+         ($1, 'wallet.credit-failed', '{"transferId": "test1"}', 'Test error', NULL, 3, 'PENDING', NOW()),
+         ($2, 'wallet.credit-failed', '{"transferId": "test2"}', 'Test error', NULL, 3, 'PROCESSED', NOW())`,
         [pendingId, processedId],
       );
 
@@ -139,8 +139,8 @@ describe('Dead Letter Queue (e2e)', () => {
       await walletDataSource.query(
         `INSERT INTO dead_letter_queue 
          (id, original_topic, original_payload, error_message, error_stack, 
-          attempt_count, first_attempt_at, last_attempt_at, status, created_at)
-         VALUES ($1, 'wallet.credit-failed', $2, 'Wallet not found', 'Error stack', 3, NOW(), NOW(), 'PENDING', NOW())`,
+          attempt_count, status, created_at)
+         VALUES ($1, 'wallet.credit-failed', $2, 'Wallet not found', 'Error stack', 3, 'PENDING', NOW())`,
         [
           dlqId,
           JSON.stringify({
@@ -189,8 +189,8 @@ describe('Dead Letter Queue (e2e)', () => {
       await walletDataSource.query(
         `INSERT INTO dead_letter_queue 
          (id, original_topic, original_payload, error_message, error_stack, 
-          attempt_count, first_attempt_at, last_attempt_at, status, created_at)
-         VALUES ($1, 'wallet.credit-failed', $2, 'Wallet not found', NULL, 3, NOW(), NOW(), 'PENDING', NOW())`,
+          attempt_count, status, created_at)
+         VALUES ($1, 'wallet.credit-failed', $2, 'Wallet not found', NULL, 3, 'PENDING', NOW())`,
         [
           dlqId,
           JSON.stringify({
@@ -240,8 +240,8 @@ describe('Dead Letter Queue (e2e)', () => {
       await walletDataSource.query(
         `INSERT INTO dead_letter_queue 
          (id, original_topic, original_payload, error_message, error_stack, 
-          attempt_count, first_attempt_at, last_attempt_at, status, created_at)
-         VALUES ($1, 'wallet.credit-failed', $2, 'Wallet not found', NULL, 3, NOW(), NOW(), 'PENDING', NOW())`,
+          attempt_count, status, created_at)
+         VALUES ($1, 'wallet.credit-failed', $2, 'Wallet not found', NULL, 3, 'PENDING', NOW())`,
         [
           dlqId,
           JSON.stringify({
@@ -288,8 +288,8 @@ describe('Dead Letter Queue (e2e)', () => {
       await walletDataSource.query(
         `INSERT INTO dead_letter_queue 
          (id, original_topic, original_payload, error_message, error_stack, 
-          attempt_count, first_attempt_at, last_attempt_at, status, created_at)
-         VALUES ($1, 'wallet.credit-failed', $2, 'Wallet not found', NULL, 3, NOW(), NOW(), 'PENDING', NOW())`,
+          attempt_count, status, created_at)
+         VALUES ($1, 'wallet.credit-failed', $2, 'Wallet not found', NULL, 3, 'PENDING', NOW())`,
         [
           dlqId,
           JSON.stringify({

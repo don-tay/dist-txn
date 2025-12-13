@@ -47,8 +47,6 @@ export class DlqService {
         errorMessage: error.message,
         errorStack: error.stack ?? null,
         attemptCount,
-        firstAttemptAt: now,
-        lastAttemptAt: now,
         status: DeadLetterStatus.PENDING,
         processedAt: null,
         createdAt: now,

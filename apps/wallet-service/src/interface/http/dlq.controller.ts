@@ -9,6 +9,7 @@ import {
   Inject,
   HttpCode,
   HttpStatus,
+  ParseEnumPipe,
 } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { DlqService } from '../../infrastructure/messaging/dlq.service';
@@ -51,12 +52,10 @@ export class DlqController {
    */
   @Get()
   async listAll(
-    @Query('status') status?: string,
+    @Query('status', new ParseEnumPipe(DeadLetterStatus, { optional: true }))
+    status?: DeadLetterStatus,
   ): Promise<DlqEntryResponseDto[]> {
-    const statusFilter = status
-      ? (status.toUpperCase() as DeadLetterStatus)
-      : undefined;
-    const entries = await this.dlqService.getAll(statusFilter);
+    const entries = await this.dlqService.getAll(status);
     return entries.map((entry) =>
       plainToInstance(DlqEntryResponseDto, entry, {
         excludeExtraneousValues: true,
@@ -91,6 +90,11 @@ export class DlqController {
     const entry = await this.dlqService.getById(id);
     if (!entry) {
       throw new NotFoundException(`DLQ entry not found: ${id}`);
+    }
+
+    // Skip replay if already processed
+    if (entry.status === DeadLetterStatus.PROCESSED) {
+      return { success: true, message: 'Entry already processed' };
     }
 
     this.logger.log(

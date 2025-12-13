@@ -36,12 +36,6 @@ export class DeadLetter {
   readonly attemptCount!: number;
 
   @Expose()
-  readonly firstAttemptAt!: Date;
-
-  @Expose()
-  readonly lastAttemptAt!: Date;
-
-  @Expose()
   readonly status!: DeadLetterStatus;
 
   @Expose()
