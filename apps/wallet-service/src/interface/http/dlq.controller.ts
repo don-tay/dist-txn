@@ -52,7 +52,7 @@ export class DlqController {
    */
   @Get()
   async listAll(
-    @Query('status', new ParseEnumPipe(DeadLetterStatus))
+    @Query('status', new ParseEnumPipe(DeadLetterStatus, { optional: true }))
     status?: DeadLetterStatus,
   ): Promise<DlqEntryResponseDto[]> {
     const entries = await this.dlqService.getAll(status);
