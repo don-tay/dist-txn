@@ -434,15 +434,182 @@ return Object.assign(new WalletOrmEntity(), {
 
 ---
 
-## 7. Future Enhancements
+## 7. Learning Roadmap
 
-Items deferred for later iterations:
+Subsequent phases to deepen distributed systems understanding, ordered by foundational value:
 
-- **Dead Letter Queue (DLQ)**: Handle messages that fail processing after retries
-- **Retry with backoff**: Exponential backoff for transient failures
-- **Saga timeout**: Auto-fail sagas stuck in intermediate states
-- **Observability**: Metrics, distributed tracing spans, structured logging
-- **Idempotency store cleanup**: TTL-based cleanup of processed transaction IDs
+### Phase 5: Dead Letter Queue (DLQ) & Retry
+
+**Problem**: Currently, if `handleWalletCreditFailed` refund fails, we log a critical error but the message is committed. This causes silent data inconsistency—sender is debited but never refunded.
+
+**Systems Concepts**:
+- Failure isolation and poison message handling
+- Retry strategies (immediate vs exponential backoff)
+- Operational alerting for manual intervention
+
+**Design**:
+
+| Component | Description |
+|-----------|-------------|
+| DLQ Topics | `*.dlq` suffix (e.g., `wallet.credit-failed.dlq`) |
+| Retry Policy | 3 retries with exponential backoff (100ms, 500ms, 2s) |
+| DLQ Routing | After max retries, route to DLQ with original payload + error metadata |
+| Admin API | `GET /admin/dlq` - list DLQ messages; `POST /admin/dlq/{id}/replay` - retry message |
+
+**DLQ Message Schema**:
+```typescript
+interface DlqMessage {
+  originalTopic: string;
+  originalPayload: unknown;
+  errorMessage: string;
+  errorStack: string;
+  attemptCount: number;
+  firstAttemptAt: string;
+  lastAttemptAt: string;
+}
+```
+
+**Success Criteria**:
+- Refund failures land in DLQ with full context
+- Admin can replay DLQ messages
+- Replayed messages respect idempotency (no double-refund)
+
+---
+
+### Phase 6: Saga Timeout & Stuck State Recovery
+
+**Problem**: If `wallet.debited` is published but `wallet.credited`/`wallet.credit-failed` is never received (network partition, consumer crash), the transfer stays in `DEBITED` forever.
+
+**Systems Concepts**:
+- Distributed state machine design
+- Failure detection vs failure occurrence
+- Scheduled job patterns for distributed systems
+
+**Design**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `timeout_at` | TIMESTAMP | When saga should be considered stuck (created_at + timeout) |
+
+**Timeout Configuration**:
+```typescript
+const SAGA_TIMEOUT_MS = 60_000; // 1 minute for learning; production would be longer
+```
+
+**Recovery Strategy**:
+
+| Current Status | Timeout Action | Rationale |
+|----------------|----------------|-----------|
+| `PENDING` | → `FAILED` | Debit never happened, safe to fail |
+| `DEBITED` | → Trigger compensation | Must refund sender |
+
+**Scheduled Job**:
+```sql
+-- Find stuck sagas
+SELECT transfer_id, status FROM transfers
+WHERE status IN ('PENDING', 'DEBITED')
+  AND timeout_at < NOW();
+```
+
+**Success Criteria**:
+- Transfers stuck in `DEBITED` for > timeout are auto-compensated
+- Transfers stuck in `PENDING` are marked `FAILED`
+- Manual test: kill Wallet Service mid-saga, observe timeout recovery
+
+---
+
+### Phase 7: Outbox Pattern for Reliable Event Publishing
+
+**Problem**: Current flow has a dual-write bug:
+```
+1. Update database (Transfer status)
+2. Publish to Kafka
+```
+If step 1 succeeds but step 2 fails (Kafka down, network issue), we have inconsistency: database says `DEBITED`, but no event was published.
+
+**Systems Concepts**:
+- Dual-write problem
+- Exactly-once vs at-least-once semantics
+- Transactional outbox pattern
+- Change Data Capture (CDC) concepts
+
+**Design**:
+
+**Outbox Table** (per service):
+```sql
+CREATE TABLE outbox (
+  id UUID PRIMARY KEY,
+  aggregate_type VARCHAR(255) NOT NULL,  -- 'Transfer', 'Wallet'
+  aggregate_id UUID NOT NULL,            -- transferId, walletId
+  event_type VARCHAR(255) NOT NULL,      -- 'TransferInitiated', 'WalletDebited'
+  payload JSONB NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  published_at TIMESTAMP NULL            -- NULL = not yet published
+);
+
+CREATE INDEX idx_outbox_unpublished ON outbox(created_at) WHERE published_at IS NULL;
+```
+
+**Flow Change**:
+```
+Before (dual-write):
+  1. BEGIN transaction
+  2. UPDATE transfer SET status = 'DEBITED'
+  3. COMMIT
+  4. kafkaProducer.publish(event)  -- Can fail after commit!
+
+After (outbox):
+  1. BEGIN transaction
+  2. UPDATE transfer SET status = 'DEBITED'
+  3. INSERT INTO outbox (event_type, payload, ...)
+  4. COMMIT  -- Both or neither
+  5. [Background] Outbox publisher polls & publishes
+```
+
+**Outbox Publisher Options**:
+1. **Polling** (simpler): Scheduled job every 100ms queries unpublished, publishes, marks published
+2. **CDC** (advanced): Debezium captures outbox inserts, routes to Kafka
+
+**Success Criteria**:
+- No event is lost even if Kafka is temporarily unavailable
+- Events are published in order (per aggregate)
+- Manual test: pause Kafka, create transfer, resume Kafka, observe eventual delivery
+
+---
+
+### Phase 8: Distributed Tracing
+
+**Problem**: With DLQ, timeouts, and outbox, debugging production issues requires tracing requests across services and async boundaries.
+
+**Systems Concepts**:
+- Correlation ID propagation
+- OpenTelemetry instrumentation
+- Trace context across async boundaries (Kafka)
+
+**Design**:
+
+**Trace Context**:
+```typescript
+interface TraceContext {
+  traceId: string;    // Unique per user request
+  spanId: string;     // Unique per operation
+  parentSpanId?: string;
+}
+```
+
+**Propagation**:
+- HTTP: `traceparent` header (W3C Trace Context)
+- Kafka: Message headers carry trace context
+
+**Infrastructure**:
+- Add Jaeger to docker-compose
+- OpenTelemetry SDK for NestJS
+- Auto-instrumentation for HTTP, Kafka, TypeORM
+
+**Success Criteria**:
+- Single trace shows full saga flow across both services
+- Kafka event hops visible in trace
+- Latency breakdown per operation
 
 ---
 
@@ -450,35 +617,71 @@ Items deferred for later iterations:
 
 Using incremental development with TDD (test-driven development):
 
-### Phase 0: Infrastructure Setup
+### Phase 0: Infrastructure Setup ✅
 
 - Docker Compose with PostgreSQL, Kafka
 - Service scaffolding with health checks
 - CI pipeline for running tests
 
-### Phase 1: Wallet Service (CRUD)
+### Phase 1: Wallet Service (CRUD) ✅
 
 1. Write e2e tests: create wallet, get wallet, verify balance constraints
 2. Implement Wallet entity + REST endpoints
 3. Assert e2e tests pass
 
-### Phase 2: Transaction Service (Transfer Initiation)
+### Phase 2: Transaction Service (Transfer Initiation) ✅
 
 1. Write e2e tests: create transfer, query transfer status
 2. Implement Transfer entity + REST endpoints
 3. Assert e2e tests pass
 
-### Phase 3: Event Integration (Happy Path)
+### Phase 3: Event Integration (Happy Path) ✅
 
 1. Write e2e test: full transfer flow (initiate -> debit -> credit -> complete)
 2. Implement event publishers and handlers
 3. Assert e2e tests pass
 
-### Phase 4: Compensation Flow
+### Phase 4: Compensation Flow ✅
 
 1. Write e2e tests: debit failure, credit failure with refund
 2. Implement compensation handlers
 3. Assert e2e tests pass
+
+---
+
+### Phase 5: DLQ & Retry (Upcoming)
+
+1. Write e2e test: simulate refund failure, verify message lands in DLQ
+2. Implement retry with exponential backoff
+3. Implement DLQ routing after max retries
+4. Add admin API for DLQ inspection and replay
+5. Assert e2e tests pass
+
+### Phase 6: Saga Timeout (Upcoming)
+
+1. Write e2e test: create transfer, prevent completion, verify timeout recovery
+2. Add `timeout_at` column to Transfer entity
+3. Implement scheduled job to detect stuck sagas
+4. Implement timeout handling (fail PENDING, compensate DEBITED)
+5. Assert e2e tests pass
+
+### Phase 7: Outbox Pattern (Upcoming)
+
+1. Write e2e test: pause Kafka, create transfer, resume, verify eventual consistency
+2. Create outbox table and repository
+3. Refactor event publishing to write to outbox in same transaction
+4. Implement background outbox publisher
+5. Assert e2e tests pass
+
+### Phase 8: Distributed Tracing (Upcoming)
+
+1. Add Jaeger to docker-compose
+2. Instrument HTTP controllers with OpenTelemetry
+3. Propagate trace context through Kafka message headers
+4. Instrument Kafka producers/consumers
+5. Verify end-to-end trace in Jaeger UI
+
+---
 
 ### TDD Workflow (per phase)
 

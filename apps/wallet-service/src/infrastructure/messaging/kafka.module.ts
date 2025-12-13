@@ -1,11 +1,17 @@
 import { Module } from '@nestjs/common';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { KAFKA_CLIENT } from './kafka.constants';
 import { KafkaProducerService } from './kafka.producer.service';
+import { DlqService } from './dlq.service';
+import { DEAD_LETTER_REPOSITORY } from '../../domain/repositories/dead-letter.repository';
+import { DeadLetterRepositoryImpl } from '../persistence/dead-letter.repository.impl';
+import { DeadLetterOrmEntity } from '../persistence/dead-letter.orm-entity';
 
 @Module({
   imports: [
+    TypeOrmModule.forFeature([DeadLetterOrmEntity]),
     ClientsModule.registerAsync([
       {
         name: KAFKA_CLIENT,
@@ -27,9 +33,9 @@ import { KafkaProducerService } from './kafka.producer.service';
             },
             consumer: {
               // Faster rebalancing for the internal request-reply consumer
-              sessionTimeout: 6000,
+              sessionTimeout: 2000,
               heartbeatInterval: 1000,
-              rebalanceTimeout: 5000,
+              rebalanceTimeout: 2000,
               groupId: 'wallet-service-client',
             },
             producer: {
@@ -40,7 +46,14 @@ import { KafkaProducerService } from './kafka.producer.service';
       },
     ]),
   ],
-  providers: [KafkaProducerService],
-  exports: [KafkaProducerService],
+  providers: [
+    KafkaProducerService,
+    DlqService,
+    {
+      provide: DEAD_LETTER_REPOSITORY,
+      useClass: DeadLetterRepositoryImpl,
+    },
+  ],
+  exports: [KafkaProducerService, DlqService],
 })
 export class KafkaModule {}

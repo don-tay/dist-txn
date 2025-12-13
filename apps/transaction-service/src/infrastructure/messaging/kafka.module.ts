@@ -27,9 +27,9 @@ import { KafkaProducerService } from './kafka.producer.service';
             },
             consumer: {
               // Faster rebalancing for the internal request-reply consumer
-              sessionTimeout: 6000,
+              sessionTimeout: 2000,
               heartbeatInterval: 1000,
-              rebalanceTimeout: 5000,
+              rebalanceTimeout: 2000,
               groupId: 'transaction-service-client',
             },
             producer: {

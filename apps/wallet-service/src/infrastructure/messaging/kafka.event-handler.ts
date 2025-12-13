@@ -6,6 +6,11 @@ import {
   KafkaContext,
 } from '@nestjs/microservices';
 import {
+  Retryable,
+  BackOffPolicy,
+  type RetryOptions,
+} from 'typescript-retry-decorator';
+import {
   KAFKA_TOPICS,
   LedgerEntryType,
   generateRefundTransactionId,
@@ -19,8 +24,20 @@ import {
 import {
   WALLET_REPOSITORY,
   type WalletRepository,
+  type DebitCreditResult,
 } from '../../domain/repositories/wallet.repository';
 import { KafkaProducerService } from './kafka.producer.service';
+import { DlqService } from './dlq.service';
+
+/** Retry configuration for compensation operations */
+const RETRY_CONFIG = {
+  maxAttempts: 3,
+  backOffPolicy: BackOffPolicy.ExponentialBackOffPolicy,
+  backOff: 100,
+  exponentialOption: { maxInterval: 2000, multiplier: 2 },
+  useOriginalError: true,
+  useConsoleLogger: false,
+} satisfies RetryOptions;
 
 @Controller()
 export class KafkaEventHandler {
@@ -30,6 +47,7 @@ export class KafkaEventHandler {
     @Inject(WALLET_REPOSITORY)
     private readonly walletRepository: WalletRepository,
     private readonly kafkaProducer: KafkaProducerService,
+    private readonly dlqService: DlqService,
   ) {}
 
   /**
@@ -125,6 +143,7 @@ export class KafkaEventHandler {
 
   /**
    * Handle wallet.credit-failed event - refund sender wallet (compensation).
+   * Uses retry with exponential backoff, routing to DLQ after max retries.
    */
   @EventPattern(KAFKA_TOPICS.WALLET_CREDIT_FAILED)
   async handleWalletCreditFailed(
@@ -138,34 +157,52 @@ export class KafkaEventHandler {
     await heartbeat();
 
     try {
-      // Generate deterministic refund transaction ID for idempotency
-      const refundTransactionId = generateRefundTransactionId(event.transferId);
-
-      const result = await this.walletRepository.updateBalanceWithLedger(
-        event.senderWalletId,
-        refundTransactionId,
-        event.amount,
-        LedgerEntryType.REFUND,
-      );
-
-      const refundedEvent: WalletRefundedEvent = {
-        transferId: event.transferId,
-        walletId: event.senderWalletId,
-        amount: event.amount,
-        timestamp: new Date().toISOString(),
-      };
-      this.kafkaProducer.publishWalletRefunded(refundedEvent);
+      const result = await this.performRefundWithRetry(event);
       this.logger.debug(
         `Refunded wallet ${event.senderWalletId}, new balance: ${String(result.wallet.balance)}`,
       );
     } catch (error) {
-      // TODO: Implement DLQ or retry mechanism for failed refunds.
-      // Failed refunds leave sender's balance debited without compensation,
-      // requiring manual intervention or alerting system.
+      // All retries exhausted - route to DLQ
+      await this.dlqService.routeToDlq(
+        KAFKA_TOPICS.WALLET_CREDIT_FAILED,
+        event as unknown as Record<string, unknown>,
+        error as Error,
+        RETRY_CONFIG.maxAttempts,
+      );
       this.logger.error(
-        `CRITICAL: Refund failed for wallet ${event.senderWalletId}: ${(error as Error).message}`,
-        (error as Error).stack,
+        `CRITICAL: Refund failed and routed to DLQ for wallet ${event.senderWalletId}`,
       );
     }
+  }
+
+  /**
+   * Perform refund with retry using typescript-retry-decorator.
+   * Retries up to 3 times with exponential backoff (100ms -> 200ms -> 400ms).
+   */
+  @Retryable(RETRY_CONFIG)
+  private async performRefundWithRetry(
+    event: WalletCreditFailedEvent,
+  ): Promise<DebitCreditResult> {
+    this.logger.debug(`Attempting refund for wallet ${event.senderWalletId}`);
+
+    const refundTransactionId = generateRefundTransactionId(event.transferId);
+
+    const result = await this.walletRepository.updateBalanceWithLedger(
+      event.senderWalletId,
+      refundTransactionId,
+      event.amount,
+      LedgerEntryType.REFUND,
+    );
+
+    // Publish refund success event
+    const refundedEvent: WalletRefundedEvent = {
+      transferId: event.transferId,
+      walletId: event.senderWalletId,
+      amount: event.amount,
+      timestamp: new Date().toISOString(),
+    };
+    this.kafkaProducer.publishWalletRefunded(refundedEvent);
+
+    return result;
   }
 }
