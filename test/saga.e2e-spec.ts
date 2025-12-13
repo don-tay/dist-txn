@@ -28,6 +28,11 @@ describe('Transfer Saga (e2e)', () => {
   let walletDataSource: DataSource;
   const logger = new Logger('SagaE2ETest');
 
+  // Use unique consumer groups per test run to avoid cross-test contamination
+  const testRunId = Date.now().toString(36);
+  const transactionConsumerGroup = `transaction-service-group-saga-${testRunId}`;
+  const walletConsumerGroup = `wallet-service-group-saga-${testRunId}`;
+
   // Helper to wait for async saga completion
   const waitForSagaCompletion = async (
     transferId: string,
@@ -94,7 +99,7 @@ describe('Transfer Saga (e2e)', () => {
           connectionTimeout: 1000,
         },
         consumer: {
-          groupId: 'transaction-service-group',
+          groupId: transactionConsumerGroup,
           sessionTimeout: 6000,
           heartbeatInterval: 100,
           rebalanceTimeout: 5000,
@@ -134,7 +139,7 @@ describe('Transfer Saga (e2e)', () => {
           connectionTimeout: 1000,
         },
         consumer: {
-          groupId: 'wallet-service-group',
+          groupId: walletConsumerGroup,
           sessionTimeout: 6000,
           heartbeatInterval: 100,
           rebalanceTimeout: 5000,

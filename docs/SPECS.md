@@ -647,7 +647,7 @@ Using incremental development with TDD (test-driven development):
 
 ---
 
-### Phase 5: DLQ & Retry (Upcoming)
+### Phase 5: DLQ & Retry ✅
 
 1. Write e2e test: simulate refund failure, verify message lands in DLQ
 2. Implement retry with exponential backoff
@@ -655,7 +655,7 @@ Using incremental development with TDD (test-driven development):
 4. Add admin API for DLQ inspection and replay
 5. Assert e2e tests pass
 
-### Phase 6: Saga Timeout (Upcoming)
+### Phase 6: Saga Timeout ✅
 
 1. Write e2e test: create transfer, prevent completion, verify timeout recovery
 2. Add `timeout_at` column to Transfer entity

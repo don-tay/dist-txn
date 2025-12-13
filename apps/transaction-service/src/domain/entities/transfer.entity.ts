@@ -17,6 +17,7 @@ interface TransferProps {
   readonly amount: number;
   readonly status: TransferStatus;
   readonly failureReason: string | null;
+  readonly timeoutAt: Date;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
@@ -45,6 +46,9 @@ export class Transfer {
 
   @Expose()
   readonly failureReason!: string | null;
+
+  @Expose()
+  readonly timeoutAt!: Date;
 
   @Expose()
   readonly createdAt!: Date;

@@ -26,6 +26,10 @@ describe('Dead Letter Queue (e2e)', () => {
   let walletDataSource: DataSource;
   const logger = new Logger('DlqE2ETest');
 
+  // Use unique consumer groups per test run to avoid cross-test contamination
+  const testRunId = Date.now().toString(36);
+  const walletConsumerGroup = `wallet-service-group-dlq-${testRunId}`;
+
   beforeAll(async () => {
     const kafkaBroker = process.env['KAFKA_BROKER'] ?? 'localhost:9092';
 
@@ -56,7 +60,7 @@ describe('Dead Letter Queue (e2e)', () => {
           connectionTimeout: 1000,
         },
         consumer: {
-          groupId: 'wallet-service-group-dlq-test',
+          groupId: walletConsumerGroup,
           sessionTimeout: 6000,
           heartbeatInterval: 100,
           rebalanceTimeout: 5000,

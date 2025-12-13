@@ -2,6 +2,15 @@ import type { Transfer, TransferStatus } from '../entities/transfer.entity';
 
 export const TRANSFER_REPOSITORY = Symbol('TRANSFER_REPOSITORY');
 
+/**
+ * Represents a stuck (timed out) transfer that needs recovery action.
+ */
+export interface StuckTransfer {
+  readonly transfer: Transfer;
+  readonly receiverWalletId: string;
+  readonly amount: number;
+}
+
 export interface TransferRepository {
   save(transfer: Transfer): Promise<Transfer>;
   findById(transferId: string): Promise<Transfer | null>;
@@ -26,4 +35,16 @@ export interface TransferRepository {
     newStatus: TransferStatus,
     failureReason?: string | null,
   ): Promise<Transfer | null>;
+
+  /**
+   * Find transfers that have timed out and are stuck in non-terminal states.
+   *
+   * Returns transfers where:
+   * - timeout_at < NOW()
+   * - status IN ('PENDING', 'DEBITED')
+   *
+   * @param limit - Maximum number of transfers to return (for batching)
+   * @returns Array of stuck transfers with their context for recovery
+   */
+  findStuckTransfers(limit?: number): Promise<StuckTransfer[]>;
 }

@@ -5,6 +5,7 @@ import {
   type TransferInitiatedEvent,
   type TransferCompletedEvent,
   type TransferFailedEvent,
+  type WalletCreditFailedEvent,
 } from '@app/common';
 import { KAFKA_CLIENT } from './kafka.constants';
 
@@ -43,5 +44,24 @@ export class KafkaProducerService implements OnModuleInit {
       value: event,
     });
     this.logger.debug(`Published transfer.failed: ${event.transferId}`);
+  }
+
+  /**
+   * Publish wallet.credit-failed event to trigger compensation.
+   * Used by SagaTimeoutService for stuck DEBITED transfers.
+   *
+   * Note: This is a cross-domain event publication for recovery purposes.
+   * In normal flow, wallet service publishes this event.
+   */
+  publishWalletCreditFailedForCompensation(
+    event: WalletCreditFailedEvent,
+  ): void {
+    this.kafkaClient.emit(KAFKA_TOPICS.WALLET_CREDIT_FAILED, {
+      key: event.transferId,
+      value: event,
+    });
+    this.logger.warn(
+      `Published wallet.credit-failed for compensation: ${event.transferId}`,
+    );
   }
 }
