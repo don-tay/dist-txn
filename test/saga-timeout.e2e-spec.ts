@@ -40,11 +40,12 @@ describe('Saga Timeout Recovery (e2e)', () => {
   const transactionConsumerGroup = `transaction-service-group-timeout-${testRunId}`;
   const walletConsumerGroup = `wallet-service-group-timeout-${testRunId}`;
 
-  // Helper to wait for transfer status
+  // Helper to wait for transfer status with polling delay
   const waitForTransferStatus = async (
     transferId: string,
     expectedStatus: string,
     maxWaitMs = 5000,
+    pollIntervalMs = 50,
   ): Promise<void> => {
     const startTime = Date.now();
     while (Date.now() - startTime < maxWaitMs) {
@@ -55,17 +56,19 @@ describe('Saga Timeout Recovery (e2e)', () => {
       if (result.length > 0 && result[0].status === expectedStatus) {
         return;
       }
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
     throw new Error(
       `Transfer did not reach status ${expectedStatus} within ${String(maxWaitMs)}ms`,
     );
   };
 
-  // Helper to wait for wallet balance
+  // Helper to wait for wallet balance with polling delay
   const waitForBalance = async (
     walletId: string,
     expectedBalance: number,
     maxWaitMs = 5000,
+    pollIntervalMs = 50,
   ): Promise<void> => {
     const startTime = Date.now();
     while (Date.now() - startTime < maxWaitMs) {
@@ -76,6 +79,7 @@ describe('Saga Timeout Recovery (e2e)', () => {
       if (result.length > 0 && Number(result[0].balance) === expectedBalance) {
         return;
       }
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
     throw new Error(
       `Wallet did not reach balance ${String(expectedBalance)} within ${String(maxWaitMs)}ms`,
@@ -363,7 +367,11 @@ describe('Saga Timeout Recovery (e2e)', () => {
       await new Promise((resolve) => setTimeout(resolve, 100)); // Wait for events
       await sagaTimeoutService.handleStuckTransfers();
 
-      // 5. Verify only ONE refund entry exists
+      // 5. Wait for compensation to complete before checking entries
+      const expectedBalance = initialBalance + transferAmount;
+      await waitForBalance(senderWalletId, expectedBalance);
+
+      // 6. Verify only ONE refund entry exists (idempotent)
       const refundEntries = await walletDataSource.query(
         `SELECT * FROM wallet_ledger_entries 
          WHERE wallet_id = $1 AND type = 'REFUND'`,
@@ -371,11 +379,11 @@ describe('Saga Timeout Recovery (e2e)', () => {
       );
       expect(refundEntries).toHaveLength(1);
 
-      // 6. Verify correct final balance (not double-refunded)
+      // 8. Verify correct final balance (not double-refunded)
       const walletAfter = await request(walletApp.getHttpServer())
         .get(`/wallets/${senderWalletId}`)
         .expect(200);
-      expect(walletAfter.body.balance).toBe(initialBalance + transferAmount);
+      expect(walletAfter.body.balance).toBe(expectedBalance);
     }, 30000);
   });
 
