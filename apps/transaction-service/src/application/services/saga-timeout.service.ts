@@ -44,7 +44,16 @@ export class SagaTimeoutService {
     this.logger.log(`Found ${String(stuckTransfers.length)} stuck transfer(s)`);
 
     for (const stuck of stuckTransfers) {
-      await this.recoverStuckTransfer(stuck);
+      try {
+        await this.recoverStuckTransfer(stuck);
+      } catch (error) {
+        // Log and continue - one failed recovery shouldn't prevent others
+        this.logger.error(
+          `Failed to recover stuck transfer: ${stuck.transfer.transferId}. ` +
+            `Error: ${error instanceof Error ? error.message : String(error)}`,
+          error instanceof Error ? error.stack : undefined,
+        );
+      }
     }
   }
 
