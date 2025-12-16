@@ -1,15 +1,14 @@
 import { Injectable, Inject, OnModuleInit, Logger } from '@nestjs/common';
 import { ClientKafka } from '@nestjs/microservices';
-import {
-  KAFKA_TOPICS,
-  type WalletDebitedEvent,
-  type WalletDebitFailedEvent,
-  type WalletCreditedEvent,
-  type WalletCreditFailedEvent,
-  type WalletRefundedEvent,
-} from '@app/common';
 import { KAFKA_CLIENT } from './kafka.constants';
 
+/**
+ * Kafka producer service for publishing events.
+ *
+ * This service provides a single generic publish method used by the
+ * OutboxPublisherService. All event publishing goes through the outbox
+ * pattern for reliable delivery.
+ */
 @Injectable()
 export class KafkaProducerService implements OnModuleInit {
   private readonly logger = new Logger(KafkaProducerService.name);
@@ -23,43 +22,15 @@ export class KafkaProducerService implements OnModuleInit {
     this.logger.debug('Kafka producer connected');
   }
 
-  publishWalletDebited(event: WalletDebitedEvent): void {
-    this.kafkaClient.emit(KAFKA_TOPICS.WALLET_DEBITED, {
-      key: event.transferId,
-      value: event,
-    });
-    this.logger.debug(`Published wallet.debited: ${event.transferId}`);
-  }
-
-  publishWalletDebitFailed(event: WalletDebitFailedEvent): void {
-    this.kafkaClient.emit(KAFKA_TOPICS.WALLET_DEBIT_FAILED, {
-      key: event.transferId,
-      value: event,
-    });
-    this.logger.debug(`Published wallet.debit-failed: ${event.transferId}`);
-  }
-
-  publishWalletCredited(event: WalletCreditedEvent): void {
-    this.kafkaClient.emit(KAFKA_TOPICS.WALLET_CREDITED, {
-      key: event.transferId,
-      value: event,
-    });
-    this.logger.debug(`Published wallet.credited: ${event.transferId}`);
-  }
-
-  publishWalletCreditFailed(event: WalletCreditFailedEvent): void {
-    this.kafkaClient.emit(KAFKA_TOPICS.WALLET_CREDIT_FAILED, {
-      key: event.transferId,
-      value: event,
-    });
-    this.logger.debug(`Published wallet.credit-failed: ${event.transferId}`);
-  }
-
-  publishWalletRefunded(event: WalletRefundedEvent): void {
-    this.kafkaClient.emit(KAFKA_TOPICS.WALLET_REFUNDED, {
-      key: event.transferId,
-      value: event,
-    });
-    this.logger.debug(`Published wallet.refunded: ${event.transferId}`);
+  /**
+   * Publish an event to a Kafka topic.
+   *
+   * @param topic - Kafka topic name
+   * @param key - Message key for partitioning (ensures ordering per key)
+   * @param payload - Event payload
+   */
+  publish(topic: string, key: string, payload: Record<string, unknown>): void {
+    this.kafkaClient.emit(topic, { key, value: payload });
+    this.logger.debug(`Published to ${topic}: ${key}`);
   }
 }

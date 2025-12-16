@@ -7,9 +7,13 @@ import { HealthController } from './interface/http/health.controller';
 import { TransferController } from './interface/http/transfer.controller';
 import { TransferService } from './application/services/transfer.service';
 import { SagaTimeoutService } from './application/services/saga-timeout.service';
+import { OutboxPublisherService } from './application/services/outbox-publisher.service';
 import { TransferOrmEntity } from './infrastructure/persistence/transfer.orm-entity';
+import { OutboxOrmEntity } from './infrastructure/persistence/outbox.orm-entity';
 import { TransferRepositoryImpl } from './infrastructure/persistence/transfer.repository.impl';
+import { OutboxRepositoryImpl } from './infrastructure/persistence/outbox.repository.impl';
 import { TRANSFER_REPOSITORY } from './domain/repositories/transfer.repository';
+import { OUTBOX_REPOSITORY } from './domain/repositories/outbox.repository';
 import { KafkaModule } from './infrastructure/messaging/kafka.module';
 import { KafkaEventHandler } from './infrastructure/messaging/kafka.event-handler';
 
@@ -38,14 +42,14 @@ import { KafkaEventHandler } from './infrastructure/messaging/kafka.event-handle
           'TRANSACTION_DB_NAME',
           'transaction_db',
         ),
-        entities: [TransferOrmEntity],
+        entities: [TransferOrmEntity, OutboxOrmEntity],
         synchronize: configService.get<boolean>(
           'TRANSACTION_DB_SYNCHRONIZE',
           false,
         ),
       }),
     }),
-    TypeOrmModule.forFeature([TransferOrmEntity]),
+    TypeOrmModule.forFeature([TransferOrmEntity, OutboxOrmEntity]),
     TerminusModule,
     ScheduleModule.forRoot(),
     KafkaModule,
@@ -54,9 +58,14 @@ import { KafkaEventHandler } from './infrastructure/messaging/kafka.event-handle
   providers: [
     TransferService,
     SagaTimeoutService,
+    OutboxPublisherService,
     {
       provide: TRANSFER_REPOSITORY,
       useClass: TransferRepositoryImpl,
+    },
+    {
+      provide: OUTBOX_REPOSITORY,
+      useClass: OutboxRepositoryImpl,
     },
   ],
 })

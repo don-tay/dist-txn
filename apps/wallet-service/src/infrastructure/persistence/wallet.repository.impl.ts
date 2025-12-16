@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { plainToInstance } from 'class-transformer';
 import { v7 as uuidv7 } from 'uuid';
-import { LedgerEntryType } from '@app/common';
+import { LedgerEntryType, type CreateOutboxEntry } from '@app/common';
 import { Wallet } from '../../domain/entities/wallet.entity';
 import { WalletLedgerEntry } from '../../domain/entities/wallet-ledger-entry.entity';
 import type {
@@ -12,6 +12,7 @@ import type {
 } from '../../domain/repositories/wallet.repository';
 import { WalletOrmEntity } from './wallet.orm-entity';
 import { WalletLedgerEntryOrmEntity } from './wallet-ledger-entry.orm-entity';
+import { OutboxOrmEntity } from './outbox.orm-entity';
 
 @Injectable()
 export class WalletRepositoryImpl implements WalletRepository {
@@ -52,10 +53,12 @@ export class WalletRepositoryImpl implements WalletRepository {
     transactionId: string,
     amount: number,
     type: LedgerEntryType,
+    outboxEntry?: CreateOutboxEntry,
   ): Promise<DebitCreditResult> {
     return this.dataSource.transaction(async (manager) => {
       const walletRepo = manager.getRepository(WalletOrmEntity);
       const ledgerRepo = manager.getRepository(WalletLedgerEntryOrmEntity);
+      const outboxRepo = manager.getRepository(OutboxOrmEntity);
 
       // Check for existing ledger entry (idempotency)
       const existingEntry = await ledgerRepo.findOne({
@@ -70,6 +73,7 @@ export class WalletRepositoryImpl implements WalletRepository {
           ledgerEntry: plainToInstance(WalletLedgerEntry, existingEntry, {
             excludeExtraneousValues: true,
           }),
+          isDuplicate: true,
         };
       }
 
@@ -115,6 +119,20 @@ export class WalletRepositoryImpl implements WalletRepository {
       });
       const savedEntry = await ledgerRepo.save(ledgerEntry);
 
+      // Write outbox entry in same transaction if provided
+      if (outboxEntry) {
+        const outbox = outboxRepo.create({
+          id: uuidv7(),
+          aggregateType: outboxEntry.aggregateType,
+          aggregateId: outboxEntry.aggregateId,
+          eventType: outboxEntry.eventType,
+          payload: outboxEntry.payload,
+          createdAt: new Date(),
+          publishedAt: null,
+        });
+        await outboxRepo.save(outbox);
+      }
+
       // Fetch updated wallet for return
       const updatedWallet = await walletRepo.findOne({
         where: { walletId },
@@ -131,6 +149,7 @@ export class WalletRepositoryImpl implements WalletRepository {
         ledgerEntry: plainToInstance(WalletLedgerEntry, savedEntry, {
           excludeExtraneousValues: true,
         }),
+        isDuplicate: false,
       };
     });
   }

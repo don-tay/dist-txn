@@ -5,6 +5,8 @@ import {
   Ctx,
   KafkaContext,
 } from '@nestjs/microservices';
+import { DataSource } from 'typeorm';
+import { v7 as uuidv7 } from 'uuid';
 import {
   Retryable,
   BackOffPolicy,
@@ -13,6 +15,8 @@ import {
 import {
   KAFKA_TOPICS,
   LedgerEntryType,
+  OutboxAggregateType,
+  OutboxEventType,
   generateRefundTransactionId,
   type TransferInitiatedEvent,
   type WalletDebitedEvent,
@@ -26,7 +30,7 @@ import {
   type WalletRepository,
   type DebitCreditResult,
 } from '../../domain/repositories/wallet.repository';
-import { KafkaProducerService } from './kafka.producer.service';
+import { OutboxOrmEntity } from '../persistence/outbox.orm-entity';
 import { DlqService } from './dlq.service';
 
 /** Retry configuration for compensation operations */
@@ -46,12 +50,13 @@ export class KafkaEventHandler {
   constructor(
     @Inject(WALLET_REPOSITORY)
     private readonly walletRepository: WalletRepository,
-    private readonly kafkaProducer: KafkaProducerService,
     private readonly dlqService: DlqService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
    * Handle transfer.initiated event - debit sender wallet.
+   * Uses outbox pattern for reliable event publishing.
    */
   @EventPattern(KAFKA_TOPICS.TRANSFER_INITIATED)
   async handleTransferInitiated(
@@ -62,33 +67,49 @@ export class KafkaEventHandler {
     const heartbeat = context.getHeartbeat();
     await heartbeat();
 
+    const debitedEvent: WalletDebitedEvent = {
+      transferId: event.transferId,
+      walletId: event.senderWalletId,
+      amount: event.amount,
+      receiverWalletId: event.receiverWalletId,
+      timestamp: new Date().toISOString(),
+    };
+
     try {
       const result = await this.walletRepository.updateBalanceWithLedger(
         event.senderWalletId,
         event.transferId,
         event.amount,
         LedgerEntryType.DEBIT,
+        {
+          aggregateType: OutboxAggregateType.WALLET,
+          aggregateId: event.transferId,
+          eventType: OutboxEventType.WALLET_DEBITED,
+          payload: debitedEvent as unknown as Record<string, unknown>,
+        },
       );
 
-      const debitedEvent: WalletDebitedEvent = {
-        transferId: event.transferId,
-        walletId: event.senderWalletId,
-        amount: event.amount,
-        receiverWalletId: event.receiverWalletId,
-        timestamp: new Date().toISOString(),
-      };
-      this.kafkaProducer.publishWalletDebited(debitedEvent);
-      this.logger.debug(
-        `Debited wallet ${event.senderWalletId}, new balance: ${String(result.wallet.balance)}`,
-      );
+      if (!result.isDuplicate) {
+        this.logger.debug(
+          `Debited wallet ${event.senderWalletId}, new balance: ${String(result.wallet.balance)}`,
+        );
+      }
     } catch (error) {
+      // Debit failed - write failure event to outbox
       const failedEvent: WalletDebitFailedEvent = {
         transferId: event.transferId,
         walletId: event.senderWalletId,
         reason: (error as Error).message,
         timestamp: new Date().toISOString(),
       };
-      this.kafkaProducer.publishWalletDebitFailed(failedEvent);
+
+      await this.writeOutboxEntry(
+        OutboxAggregateType.WALLET,
+        event.transferId,
+        OutboxEventType.WALLET_DEBIT_FAILED,
+        failedEvent as unknown as Record<string, unknown>,
+      );
+
       this.logger.warn(
         `Debit failed for wallet ${event.senderWalletId}: ${(error as Error).message}`,
       );
@@ -97,6 +118,7 @@ export class KafkaEventHandler {
 
   /**
    * Handle wallet.debited event - credit receiver wallet.
+   * Uses outbox pattern for reliable event publishing.
    */
   @EventPattern(KAFKA_TOPICS.WALLET_DEBITED)
   async handleWalletDebited(
@@ -107,25 +129,34 @@ export class KafkaEventHandler {
     const heartbeat = context.getHeartbeat();
     await heartbeat();
 
+    const creditedEvent: WalletCreditedEvent = {
+      transferId: event.transferId,
+      walletId: event.receiverWalletId,
+      amount: event.amount,
+      timestamp: new Date().toISOString(),
+    };
+
     try {
       const result = await this.walletRepository.updateBalanceWithLedger(
         event.receiverWalletId,
         event.transferId,
         event.amount,
         LedgerEntryType.CREDIT,
+        {
+          aggregateType: OutboxAggregateType.WALLET,
+          aggregateId: event.transferId,
+          eventType: OutboxEventType.WALLET_CREDITED,
+          payload: creditedEvent as unknown as Record<string, unknown>,
+        },
       );
 
-      const creditedEvent: WalletCreditedEvent = {
-        transferId: event.transferId,
-        walletId: event.receiverWalletId,
-        amount: event.amount,
-        timestamp: new Date().toISOString(),
-      };
-      this.kafkaProducer.publishWalletCredited(creditedEvent);
-      this.logger.debug(
-        `Credited wallet ${event.receiverWalletId}, new balance: ${String(result.wallet.balance)}`,
-      );
+      if (!result.isDuplicate) {
+        this.logger.debug(
+          `Credited wallet ${event.receiverWalletId}, new balance: ${String(result.wallet.balance)}`,
+        );
+      }
     } catch (error) {
+      // Credit failed - write failure event to outbox
       const failedEvent: WalletCreditFailedEvent = {
         transferId: event.transferId,
         walletId: event.receiverWalletId,
@@ -134,7 +165,14 @@ export class KafkaEventHandler {
         amount: event.amount,
         timestamp: new Date().toISOString(),
       };
-      this.kafkaProducer.publishWalletCreditFailed(failedEvent);
+
+      await this.writeOutboxEntry(
+        OutboxAggregateType.WALLET,
+        event.transferId,
+        OutboxEventType.WALLET_CREDIT_FAILED,
+        failedEvent as unknown as Record<string, unknown>,
+      );
+
       this.logger.warn(
         `Credit failed for wallet ${event.receiverWalletId}: ${(error as Error).message}`,
       );
@@ -144,6 +182,7 @@ export class KafkaEventHandler {
   /**
    * Handle wallet.credit-failed event - refund sender wallet (compensation).
    * Uses retry with exponential backoff, routing to DLQ after max retries.
+   * Uses outbox pattern for reliable event publishing.
    */
   @EventPattern(KAFKA_TOPICS.WALLET_CREDIT_FAILED)
   async handleWalletCreditFailed(
@@ -158,9 +197,11 @@ export class KafkaEventHandler {
 
     try {
       const result = await this.performRefundWithRetry(event);
-      this.logger.debug(
-        `Refunded wallet ${event.senderWalletId}, new balance: ${String(result.wallet.balance)}`,
-      );
+      if (!result.isDuplicate) {
+        this.logger.debug(
+          `Refunded wallet ${event.senderWalletId}, new balance: ${String(result.wallet.balance)}`,
+        );
+      }
     } catch (error) {
       // All retries exhausted - route to DLQ
       await this.dlqService.routeToDlq(
@@ -178,6 +219,7 @@ export class KafkaEventHandler {
   /**
    * Perform refund with retry using typescript-retry-decorator.
    * Retries up to 3 times with exponential backoff (100ms -> 200ms -> 400ms).
+   * Uses outbox pattern for reliable event publishing.
    */
   @Retryable(RETRY_CONFIG)
   private async performRefundWithRetry(
@@ -187,22 +229,48 @@ export class KafkaEventHandler {
 
     const refundTransactionId = generateRefundTransactionId(event.transferId);
 
-    const result = await this.walletRepository.updateBalanceWithLedger(
-      event.senderWalletId,
-      refundTransactionId,
-      event.amount,
-      LedgerEntryType.REFUND,
-    );
-
-    // Publish refund success event
     const refundedEvent: WalletRefundedEvent = {
       transferId: event.transferId,
       walletId: event.senderWalletId,
       amount: event.amount,
       timestamp: new Date().toISOString(),
     };
-    this.kafkaProducer.publishWalletRefunded(refundedEvent);
+
+    const result = await this.walletRepository.updateBalanceWithLedger(
+      event.senderWalletId,
+      refundTransactionId,
+      event.amount,
+      LedgerEntryType.REFUND,
+      {
+        aggregateType: OutboxAggregateType.WALLET,
+        aggregateId: event.transferId,
+        eventType: OutboxEventType.WALLET_REFUNDED,
+        payload: refundedEvent as unknown as Record<string, unknown>,
+      },
+    );
 
     return result;
+  }
+
+  /**
+   * Write an outbox entry directly (for failure cases where no ledger update happens).
+   */
+  private async writeOutboxEntry(
+    aggregateType: OutboxAggregateType,
+    aggregateId: string,
+    eventType: OutboxEventType,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const outboxRepo = this.dataSource.getRepository(OutboxOrmEntity);
+    const outbox = outboxRepo.create({
+      id: uuidv7(),
+      aggregateType,
+      aggregateId,
+      eventType,
+      payload,
+      createdAt: new Date(),
+      publishedAt: null,
+    });
+    await outboxRepo.save(outbox);
   }
 }
