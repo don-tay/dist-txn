@@ -30,9 +30,6 @@ describe('WalletService (e2e)', () => {
   let dataSource: DataSource;
 
   beforeAll(async () => {
-    // Set synchronize to true for tests to auto-create schema
-    process.env['WALLET_DB_SYNCHRONIZE'] = 'true';
-
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -57,7 +54,7 @@ describe('WalletService (e2e)', () => {
   beforeEach(async () => {
     // Clean tables before each test
     await dataSource.query(
-      'TRUNCATE TABLE dead_letter_queue, wallet_ledger_entries, wallets CASCADE',
+      'TRUNCATE TABLE dead_letter_queue, wallet_ledger_entries, wallets, outbox CASCADE',
     );
   });
 

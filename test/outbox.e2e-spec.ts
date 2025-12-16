@@ -178,10 +178,6 @@ describe('Outbox Pattern (e2e)', () => {
     await walletApp.init();
     walletDataSource = walletApp.get(DataSource);
 
-    // Synchronize databases
-    await transactionDataSource.synchronize(true);
-    await walletDataSource.synchronize(true);
-
     logger.debug('Test services initialized for outbox tests');
   }, 60000);
 

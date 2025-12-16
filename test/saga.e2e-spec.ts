@@ -151,10 +151,6 @@ describe('Transfer Saga (e2e)', () => {
     await walletApp.init();
     walletDataSource = walletApp.get(DataSource);
 
-    // Synchronize databases (create tables)
-    await transactionDataSource.synchronize(true);
-    await walletDataSource.synchronize(true);
-
     logger.debug('Test services initialized');
   }, 60000); // 60 second timeout for service initialization
 
