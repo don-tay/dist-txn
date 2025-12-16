@@ -1,8 +1,13 @@
 import { Injectable, Inject, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { DataSource } from 'typeorm';
 import { plainToInstance } from 'class-transformer';
 import { v7 as uuidv7 } from 'uuid';
-import type { TransferInitiatedEvent } from '@app/common';
+import {
+  OutboxAggregateType,
+  OutboxEventType,
+  type TransferInitiatedEvent,
+} from '@app/common';
 import {
   Transfer,
   TransferStatus,
@@ -15,7 +20,8 @@ import {
   TransferResponseDto,
   CreateTransferResponseDto,
 } from '../dtos/transfer-response.dto';
-import { KafkaProducerService } from '../../infrastructure/messaging/kafka.producer.service';
+import { TransferOrmEntity } from '../../infrastructure/persistence/transfer.orm-entity';
+import { OutboxOrmEntity } from '../../infrastructure/persistence/outbox.orm-entity';
 
 /** Default saga timeout in milliseconds (60 seconds for learning) */
 const DEFAULT_SAGA_TIMEOUT_MS = 60_000;
@@ -27,7 +33,7 @@ export class TransferService {
   constructor(
     @Inject(TRANSFER_REPOSITORY)
     private readonly transferRepository: TransferRepository,
-    private readonly kafkaProducer: KafkaProducerService,
+    private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
   ) {
     this.sagaTimeoutMs = this.configService.get<number>(
@@ -43,33 +49,56 @@ export class TransferService {
   ): Promise<CreateTransferResponseDto> {
     const now = new Date();
     const timeoutAt = new Date(now.getTime() + this.sagaTimeoutMs);
-    const transfer = Transfer.create({
-      transferId: uuidv7(),
+    const transferId = uuidv7();
+
+    // Build the event payload
+    const event: TransferInitiatedEvent = {
+      transferId,
       senderWalletId,
       receiverWalletId,
       amount,
-      status: TransferStatus.PENDING,
-      failureReason: null,
-      timeoutAt,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const saved = await this.transferRepository.save(transfer);
-
-    // Publish transfer.initiated event to start the saga
-    const event: TransferInitiatedEvent = {
-      transferId: saved.transferId,
-      senderWalletId: saved.senderWalletId,
-      receiverWalletId: saved.receiverWalletId,
-      amount: saved.amount,
       timestamp: now.toISOString(),
     };
-    this.kafkaProducer.publishTransferInitiated(event);
 
-    return plainToInstance(CreateTransferResponseDto, saved, {
-      excludeExtraneousValues: true,
+    // Atomic transaction: save transfer + outbox entry
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const transferRepo = manager.getRepository(TransferOrmEntity);
+      const outboxRepo = manager.getRepository(OutboxOrmEntity);
+
+      // Save transfer
+      const transferEntity = transferRepo.create({
+        transferId,
+        senderWalletId,
+        receiverWalletId,
+        amount,
+        status: TransferStatus.PENDING,
+        failureReason: null,
+        timeoutAt,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const savedTransfer = await transferRepo.save(transferEntity);
+
+      // Save outbox entry for transfer.initiated event
+      const outboxEntry = outboxRepo.create({
+        id: uuidv7(),
+        aggregateType: OutboxAggregateType.TRANSFER,
+        aggregateId: transferId,
+        eventType: OutboxEventType.TRANSFER_INITIATED,
+        payload: event as unknown as Record<string, unknown>,
+        createdAt: now,
+        publishedAt: null,
+      });
+      await outboxRepo.save(outboxEntry);
+
+      return savedTransfer;
     });
+
+    return plainToInstance(
+      CreateTransferResponseDto,
+      plainToInstance(Transfer, saved, { excludeExtraneousValues: true }),
+      { excludeExtraneousValues: true },
+    );
   }
 
   async getTransfer(transferId: string): Promise<TransferResponseDto> {

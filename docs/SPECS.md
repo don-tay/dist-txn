@@ -663,12 +663,12 @@ Using incremental development with TDD (test-driven development):
 4. Implement timeout handling (fail PENDING, compensate DEBITED)
 5. Assert e2e tests pass
 
-### Phase 7: Outbox Pattern (Upcoming)
+### Phase 7: Outbox Pattern ✅
 
-1. Write e2e test: pause Kafka, create transfer, resume, verify eventual consistency
-2. Create outbox table and repository
+1. Write e2e test: verify outbox entries created atomically, published and marked
+2. Create outbox table and repository (both services)
 3. Refactor event publishing to write to outbox in same transaction
-4. Implement background outbox publisher
+4. Implement background outbox publisher (50ms polling interval)
 5. Assert e2e tests pass
 
 ### Phase 8: Distributed Tracing (Upcoming)

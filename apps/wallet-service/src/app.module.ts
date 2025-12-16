@@ -2,14 +2,19 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TerminusModule } from '@nestjs/terminus';
+import { ScheduleModule } from '@nestjs/schedule';
 import { HealthController } from './interface/http/health.controller';
 import { WalletController } from './interface/http/wallet.controller';
 import { WalletService } from './application/services/wallet.service';
+import { OutboxPublisherService } from './application/services/outbox-publisher.service';
 import { WalletOrmEntity } from './infrastructure/persistence/wallet.orm-entity';
 import { WalletLedgerEntryOrmEntity } from './infrastructure/persistence/wallet-ledger-entry.orm-entity';
 import { DeadLetterOrmEntity } from './infrastructure/persistence/dead-letter.orm-entity';
+import { OutboxOrmEntity } from './infrastructure/persistence/outbox.orm-entity';
 import { WalletRepositoryImpl } from './infrastructure/persistence/wallet.repository.impl';
+import { OutboxRepositoryImpl } from './infrastructure/persistence/outbox.repository.impl';
 import { WALLET_REPOSITORY } from './domain/repositories/wallet.repository';
+import { OUTBOX_REPOSITORY } from './domain/repositories/outbox.repository';
 import { KafkaModule } from './infrastructure/messaging/kafka.module';
 import { KafkaEventHandler } from './infrastructure/messaging/kafka.event-handler';
 import { DlqController } from './interface/http/dlq.controller';
@@ -40,6 +45,7 @@ import { DeadLetterRepositoryImpl } from './infrastructure/persistence/dead-lett
           WalletOrmEntity,
           WalletLedgerEntryOrmEntity,
           DeadLetterOrmEntity,
+          OutboxOrmEntity,
         ],
         synchronize: configService.get<boolean>('WALLET_DB_SYNCHRONIZE', false),
       }),
@@ -48,8 +54,10 @@ import { DeadLetterRepositoryImpl } from './infrastructure/persistence/dead-lett
       WalletOrmEntity,
       WalletLedgerEntryOrmEntity,
       DeadLetterOrmEntity,
+      OutboxOrmEntity,
     ]),
     TerminusModule,
+    ScheduleModule.forRoot(),
     KafkaModule,
   ],
   controllers: [
@@ -60,9 +68,14 @@ import { DeadLetterRepositoryImpl } from './infrastructure/persistence/dead-lett
   ],
   providers: [
     WalletService,
+    OutboxPublisherService,
     {
       provide: WALLET_REPOSITORY,
       useClass: WalletRepositoryImpl,
+    },
+    {
+      provide: OUTBOX_REPOSITORY,
+      useClass: OutboxRepositoryImpl,
     },
     DlqService,
     {

@@ -72,9 +72,6 @@ describe('Dead Letter Queue (e2e)', () => {
     await walletApp.init();
     walletDataSource = walletApp.get(DataSource);
 
-    // Synchronize database (create tables including DLQ)
-    await walletDataSource.synchronize(true);
-
     logger.debug('Wallet service initialized for DLQ tests');
   }, 60000);
 

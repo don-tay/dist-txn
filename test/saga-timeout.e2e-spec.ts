@@ -168,10 +168,6 @@ describe('Saga Timeout Recovery (e2e)', () => {
     await walletApp.init();
     walletDataSource = walletApp.get(DataSource);
 
-    // Synchronize databases
-    await transactionDataSource.synchronize(true);
-    await walletDataSource.synchronize(true);
-
     logger.debug('Test services initialized for timeout tests');
   }, 60000);
 

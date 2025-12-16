@@ -5,45 +5,29 @@ import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { v7 as uuidv7 } from 'uuid';
-import { jest } from '@jest/globals';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { TerminusModule } from '@nestjs/terminus';
-import { HealthController } from '../src/interface/http/health.controller';
-import { TransferController } from '../src/interface/http/transfer.controller';
-import { TransferService } from '../src/application/services/transfer.service';
-import { TransferOrmEntity } from '../src/infrastructure/persistence/transfer.orm-entity';
-import { TransferRepositoryImpl } from '../src/infrastructure/persistence/transfer.repository.impl';
-import { TRANSFER_REPOSITORY } from '../src/domain/repositories/transfer.repository';
-import { KafkaProducerService } from '../src/infrastructure/messaging/kafka.producer.service';
+import { AppModule } from '../src/app.module';
 
 /**
  * Transaction Service E2E Tests (HTTP API only)
  *
- * These tests verify the HTTP API layer in isolation, without requiring Kafka infrastructure.
+ * These tests verify the HTTP API layer using the actual AppModule,
+ * ensuring the test environment mirrors runtime behavior as closely as possible.
  *
- * WHY WE MOCK KAFKA:
- * ------------------
- * 1. **Isolation**: These tests focus solely on HTTP request/response behavior (validation,
- *    status codes, response shapes). They don't test the async saga flow.
- *
- * 2. **Speed & Reliability**: Kafka connection during app initialization can take 5-30+ seconds
- *    and may fail intermittently. Mocking eliminates this external dependency.
- *
- * 3. **CI Simplicity**: HTTP-only tests can run with just PostgreSQL, without requiring
- *    Kafka + Zookeeper infrastructure.
- *
- * 4. **Separation of Concerns**: Full Kafka integration is tested separately in
- *    `test/saga.e2e-spec.ts` which spins up both services with real Kafka.
+ * OUTBOX PATTERN:
+ * ---------------
+ * With the outbox pattern, TransferService no longer publishes directly to Kafka.
+ * Instead, it writes events to the outbox table atomically with domain changes.
+ * These tests verify outbox entries are created correctly.
  *
  * WHAT'S TESTED HERE:
  * - POST /transfers - Creates transfer, validates input, returns 202 with PENDING status
+ * - POST /transfers - Verifies outbox entry created atomically
  * - GET /transfers/:id - Retrieves transfer by ID
  * - GET /health - Health check endpoint
  * - Input validation (UUIDs, amounts, required fields, extra properties)
  *
  * WHAT'S NOT TESTED HERE:
- * - Kafka event publishing (verified via mock assertion, not actual delivery)
+ * - Kafka event publishing (handled by OutboxPublisherService, tested in outbox.e2e-spec.ts)
  * - Saga state transitions (PENDING -> DEBITED -> COMPLETED/FAILED)
  * - Cross-service communication
  */
@@ -51,62 +35,9 @@ describe('TransactionService (e2e)', () => {
   let app: INestApplication;
   let dataSource: DataSource;
 
-  /**
-   * Mock Kafka producer to avoid actual Kafka connection.
-   * We still verify these methods are called with correct arguments
-   * to ensure the service layer integrates properly.
-   */
-  const mockKafkaProducer = {
-    publishTransferInitiated: jest.fn(),
-    publishTransferCompleted: jest.fn(),
-    publishTransferFailed: jest.fn(),
-  };
-
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        ConfigModule.forRoot({
-          isGlobal: true,
-          envFilePath: ['.env.local', '.env'],
-        }),
-        TypeOrmModule.forRootAsync({
-          imports: [ConfigModule],
-          inject: [ConfigService],
-          useFactory: (configService: ConfigService) => ({
-            type: 'postgres',
-            host: configService.get<string>('TRANSACTION_DB_HOST', 'localhost'),
-            port: configService.get<number>('TRANSACTION_DB_PORT', 5432),
-            username: configService.get<string>(
-              'TRANSACTION_DB_USER',
-              'transaction_user',
-            ),
-            password: configService.get<string>(
-              'TRANSACTION_DB_PASSWORD',
-              'transaction_pass',
-            ),
-            database: configService.get<string>(
-              'TRANSACTION_DB_NAME',
-              'transaction_db',
-            ),
-            entities: [TransferOrmEntity],
-            synchronize: true,
-          }),
-        }),
-        TypeOrmModule.forFeature([TransferOrmEntity]),
-        TerminusModule,
-      ],
-      controllers: [HealthController, TransferController],
-      providers: [
-        TransferService,
-        {
-          provide: TRANSFER_REPOSITORY,
-          useClass: TransferRepositoryImpl,
-        },
-        {
-          provide: KafkaProducerService,
-          useValue: mockKafkaProducer,
-        },
-      ],
+      imports: [AppModule],
     }).compile();
 
     app = moduleFixture.createNestApplication();
@@ -128,8 +59,7 @@ describe('TransactionService (e2e)', () => {
 
   beforeEach(async () => {
     // Clean tables before each test
-    await dataSource.query('TRUNCATE TABLE transfers CASCADE');
-    jest.clearAllMocks();
+    await dataSource.query('TRUNCATE TABLE transfers, outbox CASCADE');
   });
 
   describe('/health (GET)', () => {
@@ -166,15 +96,21 @@ describe('TransactionService (e2e)', () => {
       expect(response.body.transferId).toBeDefined();
       expect(response.body.createdAt).toBeDefined();
 
-      // Verify Kafka event was published
-      expect(mockKafkaProducer.publishTransferInitiated).toHaveBeenCalledWith(
-        expect.objectContaining({
-          transferId: response.body.transferId,
-          senderWalletId,
-          receiverWalletId,
-          amount,
-        }),
+      // Verify outbox entry was created atomically with the transfer
+      const outboxEntries = await dataSource.query(
+        `SELECT * FROM outbox WHERE aggregate_id = $1`,
+        [response.body.transferId],
       );
+      expect(outboxEntries).toHaveLength(1);
+      expect(outboxEntries[0].event_type).toBe('TransferInitiated');
+      expect(outboxEntries[0].aggregate_type).toBe('Transfer');
+      // payload is stored as jsonb, returned as object by pg driver
+      expect(outboxEntries[0].payload).toMatchObject({
+        transferId: response.body.transferId,
+        senderWalletId,
+        receiverWalletId,
+        amount,
+      });
     });
 
     it('should reject transfer to same wallet', async () => {

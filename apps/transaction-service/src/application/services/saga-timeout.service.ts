@@ -1,13 +1,21 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import type { WalletCreditFailedEvent, TransferFailedEvent } from '@app/common';
+import { DataSource } from 'typeorm';
+import { v7 as uuidv7 } from 'uuid';
+import {
+  OutboxAggregateType,
+  OutboxEventType,
+  type WalletCreditFailedEvent,
+  type TransferFailedEvent,
+} from '@app/common';
 import { TransferStatus } from '../../domain/entities/transfer.entity';
 import {
   TRANSFER_REPOSITORY,
   type TransferRepository,
   type StuckTransfer,
 } from '../../domain/repositories/transfer.repository';
-import { KafkaProducerService } from '../../infrastructure/messaging/kafka.producer.service';
+import { TransferOrmEntity } from '../../infrastructure/persistence/transfer.orm-entity';
+import { OutboxOrmEntity } from '../../infrastructure/persistence/outbox.orm-entity';
 
 /**
  * Service responsible for detecting and recovering stuck sagas.
@@ -26,7 +34,7 @@ export class SagaTimeoutService {
   constructor(
     @Inject(TRANSFER_REPOSITORY)
     private readonly transferRepository: TransferRepository,
-    private readonly kafkaProducer: KafkaProducerService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -90,25 +98,58 @@ export class SagaTimeoutService {
   /**
    * Handle a transfer stuck in PENDING state.
    * The debit never happened, so we can safely mark it as FAILED.
+   * Uses outbox pattern for reliable event publishing.
    */
   private async handleStuckPending(transferId: string): Promise<void> {
-    const updated = await this.transferRepository.updateStatus(
+    const failureReason =
+      'Saga timeout: debit not processed within timeout period';
+    const timestamp = new Date().toISOString();
+
+    const failedEvent: TransferFailedEvent = {
       transferId,
-      TransferStatus.PENDING,
-      TransferStatus.FAILED,
-      'Saga timeout: debit not processed within timeout period',
-    );
+      reason: failureReason,
+      timestamp,
+    };
+
+    const updated = await this.dataSource.transaction(async (manager) => {
+      const transferRepo = manager.getRepository(TransferOrmEntity);
+      const outboxRepo = manager.getRepository(OutboxOrmEntity);
+
+      // Atomic status update with optimistic lock
+      const result = await transferRepo
+        .createQueryBuilder()
+        .update(TransferOrmEntity)
+        .set({
+          status: TransferStatus.FAILED,
+          failureReason,
+          updatedAt: new Date(),
+        })
+        .where('transfer_id = :transferId AND status = :expectedStatus', {
+          transferId,
+          expectedStatus: TransferStatus.PENDING,
+        })
+        .execute();
+
+      if ((result.affected ?? 0) > 0) {
+        // Write transfer.failed to outbox
+        const outboxEntry = outboxRepo.create({
+          id: uuidv7(),
+          aggregateType: OutboxAggregateType.TRANSFER,
+          aggregateId: transferId,
+          eventType: OutboxEventType.TRANSFER_FAILED,
+          payload: failedEvent as unknown as Record<string, unknown>,
+          createdAt: new Date(),
+          publishedAt: null,
+        });
+        await outboxRepo.save(outboxEntry);
+        return true;
+      }
+      return false;
+    });
 
     if (updated) {
-      const failedEvent: TransferFailedEvent = {
-        transferId,
-        reason: 'Saga timeout: debit not processed within timeout period',
-        timestamp: new Date().toISOString(),
-      };
-      this.kafkaProducer.publishTransferFailed(failedEvent);
       this.logger.log(`Stuck PENDING transfer marked as FAILED: ${transferId}`);
     } else {
-      // Already transitioned (concurrent processing) - idempotent
       this.logger.debug(
         `Stuck transfer already processed (concurrent): ${transferId}`,
       );
@@ -119,6 +160,7 @@ export class SagaTimeoutService {
    * Handle a transfer stuck in DEBITED state.
    * The sender was debited but credit/completion never happened.
    * Must trigger compensation to refund the sender.
+   * Uses outbox pattern for reliable event publishing.
    */
   private async handleStuckDebited(
     transferId: string,
@@ -126,42 +168,79 @@ export class SagaTimeoutService {
     receiverWalletId: string,
     amount: number,
   ): Promise<void> {
-    // First, mark the transfer as FAILED
-    const updated = await this.transferRepository.updateStatus(
+    const failureReason =
+      'Saga timeout: credit not processed within timeout period';
+    const timestamp = new Date().toISOString();
+
+    const failedEvent: TransferFailedEvent = {
       transferId,
-      TransferStatus.DEBITED,
-      TransferStatus.FAILED,
-      'Saga timeout: credit not processed within timeout period',
-    );
+      reason: failureReason,
+      timestamp,
+    };
+
+    const compensationEvent: WalletCreditFailedEvent = {
+      transferId,
+      walletId: receiverWalletId,
+      reason: 'Saga timeout: triggering compensation',
+      senderWalletId,
+      amount,
+      timestamp,
+    };
+
+    const updated = await this.dataSource.transaction(async (manager) => {
+      const transferRepo = manager.getRepository(TransferOrmEntity);
+      const outboxRepo = manager.getRepository(OutboxOrmEntity);
+
+      // Atomic status update with optimistic lock
+      const result = await transferRepo
+        .createQueryBuilder()
+        .update(TransferOrmEntity)
+        .set({
+          status: TransferStatus.FAILED,
+          failureReason,
+          updatedAt: new Date(),
+        })
+        .where('transfer_id = :transferId AND status = :expectedStatus', {
+          transferId,
+          expectedStatus: TransferStatus.DEBITED,
+        })
+        .execute();
+
+      if ((result.affected ?? 0) > 0) {
+        // Write transfer.failed to outbox
+        const failedOutbox = outboxRepo.create({
+          id: uuidv7(),
+          aggregateType: OutboxAggregateType.TRANSFER,
+          aggregateId: transferId,
+          eventType: OutboxEventType.TRANSFER_FAILED,
+          payload: failedEvent as unknown as Record<string, unknown>,
+          createdAt: new Date(),
+          publishedAt: null,
+        });
+        await outboxRepo.save(failedOutbox);
+
+        // Write wallet.credit-failed to outbox (for compensation)
+        const compensationOutbox = outboxRepo.create({
+          id: uuidv7(),
+          aggregateType: OutboxAggregateType.TRANSFER,
+          aggregateId: transferId,
+          eventType: OutboxEventType.WALLET_CREDIT_FAILED,
+          payload: compensationEvent as unknown as Record<string, unknown>,
+          createdAt: new Date(),
+          publishedAt: null,
+        });
+        await outboxRepo.save(compensationOutbox);
+
+        return true;
+      }
+      return false;
+    });
 
     if (updated) {
-      // Publish transfer.failed event
-      const failedEvent: TransferFailedEvent = {
-        transferId,
-        reason: 'Saga timeout: credit not processed within timeout period',
-        timestamp: new Date().toISOString(),
-      };
-      this.kafkaProducer.publishTransferFailed(failedEvent);
-
-      // Trigger compensation by publishing wallet.credit-failed
-      // This will cause wallet service to refund the sender
-      const compensationEvent: WalletCreditFailedEvent = {
-        transferId,
-        walletId: receiverWalletId,
-        reason: 'Saga timeout: triggering compensation',
-        senderWalletId,
-        amount,
-        timestamp: new Date().toISOString(),
-      };
-      this.kafkaProducer.publishWalletCreditFailedForCompensation(
-        compensationEvent,
-      );
-
       this.logger.log(
         `Stuck DEBITED transfer marked as FAILED and compensation triggered: ${transferId}`,
       );
     } else {
-      // Already transitioned (concurrent processing) - idempotent
       this.logger.debug(
         `Stuck transfer already processed (concurrent): ${transferId}`,
       );

@@ -21,10 +21,11 @@ import {
   WALLET_REPOSITORY,
   type WalletRepository,
 } from '../../domain/repositories/wallet.repository';
-import { KafkaProducerService } from '../../infrastructure/messaging/kafka.producer.service';
 import {
   KAFKA_TOPICS,
   LedgerEntryType,
+  OutboxAggregateType,
+  OutboxEventType,
   generateRefundTransactionId,
   type WalletCreditFailedEvent,
   type WalletRefundedEvent,
@@ -42,7 +43,6 @@ export class DlqController {
     private readonly dlqService: DlqService,
     @Inject(WALLET_REPOSITORY)
     private readonly walletRepository: WalletRepository,
-    private readonly kafkaProducer: KafkaProducerService,
   ) {}
 
   /**
@@ -131,27 +131,34 @@ export class DlqController {
 
   /**
    * Replay a failed refund from a credit-failed event.
+   * Uses outbox pattern for reliable event publishing.
    */
   private async replayCreditFailedRefund(
     event: WalletCreditFailedEvent,
   ): Promise<void> {
     const refundTransactionId = generateRefundTransactionId(event.transferId);
 
-    const result = await this.walletRepository.updateBalanceWithLedger(
-      event.senderWalletId,
-      refundTransactionId,
-      event.amount,
-      LedgerEntryType.REFUND,
-    );
-
-    // Publish refund success event
+    // Build refund event for outbox
     const refundedEvent: WalletRefundedEvent = {
       transferId: event.transferId,
       walletId: event.senderWalletId,
       amount: event.amount,
       timestamp: new Date().toISOString(),
     };
-    this.kafkaProducer.publishWalletRefunded(refundedEvent);
+
+    // Atomically update wallet balance and write to outbox
+    const result = await this.walletRepository.updateBalanceWithLedger(
+      event.senderWalletId,
+      refundTransactionId,
+      event.amount,
+      LedgerEntryType.REFUND,
+      {
+        aggregateType: OutboxAggregateType.WALLET,
+        aggregateId: event.transferId,
+        eventType: OutboxEventType.WALLET_REFUNDED,
+        payload: refundedEvent as unknown as Record<string, unknown>,
+      },
+    );
 
     this.logger.log(
       `Refund replay successful: wallet=${event.senderWalletId}, ` +
