@@ -11,10 +11,13 @@
   "scripts": {
     "build": "nest build",
     "build:all": "npm run build -w @app/common && npm run build transaction-service && npm run build wallet-service",
+    "format": "prettier --write \"apps/**/*.ts\" \"libs/**/*.ts\"",
+    "format:check": "prettier --check \"apps/**/*.ts\" \"libs/**/*.ts\"",
     "start:dev": "nest start transaction-service --watch & nest start wallet-service --watch",
     "start:transaction-service": "nest start transaction-service --watch",
     "start:wallet-service": "nest start wallet-service --watch",
     "lint": "eslint \"apps/**/*.ts\" \"libs/**/*.ts\" \"test/**/*.ts\" --fix",
+    "lint:check": "eslint \"apps/**/*.ts\" \"libs/**/*.ts\" \"test/**/*.ts\"",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:e2e:setup": "tsx test/setup-e2e.ts",
     "test:e2e": "npm run test:e2e:setup && node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./test/jest-e2e.json",
